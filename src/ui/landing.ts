@@ -204,7 +204,11 @@ export function createLanding(
     features.appendChild(badge);
   }
 
-  landing.append(hero, uploadRow, masterpieceBox, showcaseSection, howItWorks, features);
+  const footer = document.createElement('footer');
+  footer.className = 'app-footer';
+  footer.innerHTML = 'Made with <span class="heart-icon">♥</span> by <span class="author-name">Anil Chowdary</span>';
+
+  landing.append(hero, uploadRow, masterpieceBox, showcaseSection, howItWorks, features, footer);
 
   return landing;
 }

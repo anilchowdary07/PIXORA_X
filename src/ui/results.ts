@@ -266,7 +266,11 @@ export function createResults(
 
   exportCenter.append(exportTitle, exportButtons);
 
-  results.append(header, comparisonWrap, metricsRow, exportCenter);
+  const footer = document.createElement('footer');
+  footer.className = 'app-footer';
+  footer.innerHTML = 'Made with <span class="heart-icon">♥</span> by <span class="author-name">Anil Chowdary</span>';
+
+  results.append(header, comparisonWrap, metricsRow, exportCenter, footer);
 
   return results;
 }

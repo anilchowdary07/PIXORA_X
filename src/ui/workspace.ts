@@ -358,7 +358,11 @@ export function createWorkspace(
   statusProgress.className = 'status-item';
   statusProgress.textContent = '0%';
 
-  statusBar.append(statusPhase, statusBackend, progressWrap, statusFps, statusProgress);
+  const statusAuthor = document.createElement('div');
+  statusAuthor.className = 'status-item status-author';
+  statusAuthor.innerHTML = 'Made with <span class="heart-icon">♥</span> by <span class="author-name">Anil Chowdary</span>';
+
+  statusBar.append(statusPhase, statusBackend, progressWrap, statusFps, statusProgress, statusAuthor);
 
   // Assemble
   workspace.append(toolbar, content, controls, statusBar);

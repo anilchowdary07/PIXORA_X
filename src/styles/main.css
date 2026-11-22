@@ -720,6 +720,58 @@ html, body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ---- App Footer ---- */
+.app-footer {
+  margin-top: 1.5rem;
+  padding: 1.25rem 0 0.5rem 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  user-select: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  width: 100%;
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.heart-icon {
+  color: #ef4444;
+  display: inline-block;
+  font-size: 1.05rem;
+  animation: heart-beat 1.6s infinite ease-in-out;
+  transform-origin: center;
+  vertical-align: middle;
+}
+@keyframes heart-beat {
+  0%, 100% { transform: scale(1); }
+  14% { transform: scale(1.28); }
+  28% { transform: scale(1); }
+  42% { transform: scale(1.2); }
+  70% { transform: scale(1); }
+}
+.author-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+.status-author {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.status-author .heart-icon {
+  font-size: 0.8rem;
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
