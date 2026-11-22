@@ -158,22 +158,28 @@ function handleShowcaseSelect(showcase: DemoShowcase) {
   showToast(`Loading: ${showcase.title}...`);
   state.sourceImage = showcase.getSource();
   state.targetImage = showcase.getTarget();
-  showWorkspace();
-  // Auto-trigger reconstruction on demo selection
+  showWorkspace(false);
+  // Animate center button to toolbar and trigger reconstruction
   setTimeout(() => {
-    startReconstruction();
-  }, 300);
+    if (workspaceElements) {
+      workspaceElements.dockCenterButton(() => {
+        startReconstruction();
+      });
+    } else {
+      startReconstruction();
+    }
+  }, 400);
 }
 
 function tryTransitionToWorkspace() {
   if (state.sourceImage && state.targetImage) {
-    showWorkspace();
+    showWorkspace(false);
   }
 }
 
 // ---- Workspace ----
 
-function showWorkspace() {
+function showWorkspace(isReturning = false) {
   clearViews();
   state.view = 'workspace';
 
@@ -193,6 +199,19 @@ function showWorkspace() {
   const sourceCanvas = imageInfoToCanvas(state.processedSource);
   const targetCanvas = imageInfoToCanvas(state.processedTarget);
 
+  // If returning and result exists, prepare reconstructed canvas preview
+  const hasReconstructed = isReturning && state.result !== null;
+  let reconCanvas: HTMLCanvasElement | null = null;
+  if (hasReconstructed && state.result) {
+    reconCanvas = document.createElement('canvas');
+    reconCanvas.width = state.result.width;
+    reconCanvas.height = state.result.height;
+    const ctx = reconCanvas.getContext('2d')!;
+    const imgData = ctx.createImageData(state.result.width, state.result.height);
+    imgData.data.set(state.result.reconstructedPixels);
+    ctx.putImageData(imgData, 0, 0);
+  }
+
   // Create animation canvas
   animCanvas = document.createElement('canvas');
 
@@ -204,6 +223,8 @@ function showWorkspace() {
     state.preset,
     state.enableSegmentation,
     state.animConfig.particleCount,
+    hasReconstructed,
+    reconCanvas,
     {
       onReconstruct: startReconstruction,
       onBack: showLanding,
@@ -303,6 +324,7 @@ async function startReconstruction() {
 
   if (!workspaceElements) return;
 
+  workspaceElements.setBackdropVisibility(false);
   workspaceElements.processingOverlay.classList.remove('hidden');
   workspaceElements.processingText.textContent = 'Calculating optimal pixel rearrangement...';
   workspaceElements.processingFill.style.width = '0%';
@@ -509,6 +531,9 @@ function showResults(result: ReconstructionResult) {
           console.error('Clipboard copy error:', err);
           showToast('Could not copy to clipboard');
         }
+      },
+      onBackToWorkspace: () => {
+        showWorkspace(true);
       },
       onNewReconstruction: showLanding,
     }

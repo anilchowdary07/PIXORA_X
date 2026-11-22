@@ -38,6 +38,10 @@ export interface WorkspaceElements {
   segmentationBtn: HTMLButtonElement;
   downloadBtn: HTMLButtonElement;
   reconstructBtn: HTMLButtonElement;
+  centerCta: HTMLElement;
+  centerReconstructBtn: HTMLButtonElement;
+  dockCenterButton: (onDocked: () => void) => void;
+  setBackdropVisibility: (visible: boolean) => void;
 }
 
 export function createWorkspace(
@@ -48,6 +52,8 @@ export function createWorkspace(
   preset: QualityPreset,
   enableSegmentation: boolean,
   particleCount: number,
+  hasReconstructed: boolean,
+  reconstructedCanvas: HTMLCanvasElement | null,
   callbacks: WorkspaceCallbacks
 ): WorkspaceElements {
   const workspace = document.createElement('div');
@@ -102,8 +108,24 @@ export function createWorkspace(
   const toolbarRight = document.createElement('div');
   toolbarRight.className = 'toolbar-right';
 
-  const reconstructBtn = createButton('⚡ Reconstruct', 'primary', callbacks.onReconstruct);
+  // Toolbar Reconstruct button — stays in toolbar once docked
+  let isDocked = hasReconstructed;
+  const reconstructBtn = createButton('⚡ Reconstruct', 'primary', () => {
+    if (!isDocked && centerCta && centerCta.style.display !== 'none') {
+      dockCenterButton(() => callbacks.onReconstruct());
+    } else {
+      callbacks.onReconstruct();
+    }
+  });
+  reconstructBtn.id = 'toolbar-reconstruct-btn';
   reconstructBtn.classList.add('btn-sm');
+
+  if (!hasReconstructed) {
+    reconstructBtn.style.opacity = '0';
+    reconstructBtn.style.pointerEvents = 'none';
+    reconstructBtn.style.transform = 'scale(0.9)';
+    reconstructBtn.style.transition = 'all 300ms cubic-bezier(0.16, 1, 0.3, 1)';
+  }
 
   // Prominent Download Output Button
   const downloadBtn = createButton('💾 Download Output', 'secondary', () => {
@@ -124,12 +146,101 @@ export function createWorkspace(
   leftPanel.className = 'preview-panel';
   leftPanel.appendChild(createImagePreview(sourceCanvas, 'Source (Pixels)'));
 
-  // Center: canvas
+  // Center: canvas container
   const canvasContainer = document.createElement('div');
   canvasContainer.className = 'canvas-container';
+
+  // Image Backdrop to prevent empty black void before/after reconstruction
+  const backdropImg = document.createElement('img');
+  backdropImg.className = 'canvas-backdrop';
+  if (hasReconstructed && reconstructedCanvas) {
+    backdropImg.src = reconstructedCanvas.toDataURL();
+    backdropImg.alt = 'Reconstructed image preview';
+  } else {
+    backdropImg.src = sourceCanvas.toDataURL();
+    backdropImg.alt = 'Source image preview';
+  }
+  canvasContainer.appendChild(backdropImg);
+
+  // Animation Canvas
   animCanvas.style.width = '100%';
   animCanvas.style.height = '100%';
   canvasContainer.appendChild(animCanvas);
+
+  // Center Reconstruct CTA (in the middle of the canvas before reconstruction)
+  const centerCta = document.createElement('div');
+  centerCta.className = 'canvas-center-cta';
+  centerCta.id = 'canvas-center-cta';
+  if (hasReconstructed) {
+    centerCta.style.display = 'none';
+  }
+
+  const centerReconstructBtn = document.createElement('button');
+  centerReconstructBtn.className = 'btn btn-primary btn-center-reconstruct';
+  centerReconstructBtn.innerHTML = `
+    <span class="cta-pulse-glow"></span>
+    <span class="cta-icon">⚡</span>
+    <span class="cta-text">Reconstruct</span>
+  `;
+  centerReconstructBtn.title = 'Start image reconstruction';
+
+  const centerSubtitle = document.createElement('div');
+  centerSubtitle.className = 'cta-subtitle';
+  centerSubtitle.textContent = 'Click to rearrange source pixels into target structure';
+
+  centerCta.append(centerReconstructBtn, centerSubtitle);
+  canvasContainer.appendChild(centerCta);
+
+  // Docking animation: Center button flies to its place in the top toolbar
+  function dockCenterButton(onDocked: () => void) {
+    if (isDocked || centerCta.style.display === 'none') {
+      isDocked = true;
+      reconstructBtn.style.opacity = '1';
+      reconstructBtn.style.pointerEvents = 'auto';
+      reconstructBtn.style.transform = 'scale(1)';
+      onDocked();
+      return;
+    }
+
+    centerReconstructBtn.style.pointerEvents = 'none';
+    centerSubtitle.style.transition = 'opacity 200ms ease';
+    centerSubtitle.style.opacity = '0';
+
+    // Compute coordinate translation
+    const cRect = centerReconstructBtn.getBoundingClientRect();
+    const tRect = reconstructBtn.getBoundingClientRect();
+
+    const dx = (tRect.left + tRect.width / 2) - (cRect.left + cRect.width / 2);
+    const dy = (tRect.top + tRect.height / 2) - (cRect.top + cRect.height / 2);
+
+    centerReconstructBtn.style.transition = 'transform 450ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 450ms ease';
+    centerReconstructBtn.style.transform = `translate(${dx}px, ${dy}px) scale(0.7)`;
+    centerReconstructBtn.style.opacity = '0.5';
+
+    setTimeout(() => {
+      isDocked = true;
+      centerCta.style.display = 'none';
+      centerReconstructBtn.style.transform = '';
+      centerReconstructBtn.style.opacity = '';
+      reconstructBtn.style.opacity = '1';
+      reconstructBtn.style.pointerEvents = 'auto';
+      reconstructBtn.style.transform = 'scale(1)';
+      reconstructBtn.classList.add('docked-pulse');
+      setTimeout(() => reconstructBtn.classList.remove('docked-pulse'), 800);
+      onDocked();
+    }, 440);
+  }
+
+  centerReconstructBtn.addEventListener('click', () => {
+    dockCenterButton(() => {
+      callbacks.onReconstruct();
+    });
+  });
+
+  const setBackdropVisibility = (visible: boolean) => {
+    backdropImg.style.transition = 'opacity 300ms ease';
+    backdropImg.style.opacity = visible ? '0.75' : '0';
+  };
 
   // Processing overlay
   const processingOverlay = document.createElement('div');
@@ -266,5 +377,9 @@ export function createWorkspace(
     segmentationBtn,
     downloadBtn,
     reconstructBtn,
+    centerCta,
+    centerReconstructBtn,
+    dockCenterButton,
+    setBackdropVisibility,
   };
 }

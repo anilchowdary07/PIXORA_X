@@ -9,6 +9,7 @@ export interface ResultsCallbacks {
   onExport: (format: string, quality: number) => void;
   onExportComparison: () => void;
   onCopyToClipboard: () => void;
+  onBackToWorkspace: () => void;
   onNewReconstruction: () => void;
 }
 
@@ -30,8 +31,19 @@ export function createResults(
   title.className = 'results-title';
   title.textContent = 'Reconstruction Complete';
 
-  const newBtn = createButton('← Start New Reconstruction', 'secondary', callbacks.onNewReconstruction);
-  header.append(title, newBtn);
+  const navGroup = document.createElement('div');
+  navGroup.className = 'results-nav-group';
+
+  const backBtn = createButton('← Back to Workspace', 'primary', callbacks.onBackToWorkspace);
+  backBtn.id = 'res-back-btn';
+  backBtn.title = 'Return to workspace with current images preserved';
+
+  const newBtn = createButton('+ New Images', 'secondary', callbacks.onNewReconstruction);
+  newBtn.id = 'res-new-btn';
+  newBtn.title = 'Start fresh with new source and target images';
+
+  navGroup.append(backBtn, newBtn);
+  header.append(title, navGroup);
 
   // Interactive Comparison Viewer (Split Slider)
   const comparisonWrap = document.createElement('div');
