@@ -128,10 +128,41 @@ function showLanding() {
   const landing = createLanding(
     handleSourceUpload,
     handleTargetUpload,
-    handleShowcaseSelect
+    handleShowcaseSelect,
+    handleMasterpieceSelect
   );
 
   showView(landing);
+}
+
+async function handleMasterpieceSelect() {
+  showToast('Loading Masterpiece: Cosmic Fluid ➔ Astronaut...');
+  try {
+    const basePath = import.meta.env.BASE_URL || './';
+    const sourceUrl = `${basePath}showcase-source.jpg`.replace('//', '/');
+    const targetUrl = `${basePath}showcase-target.jpg`.replace('//', '/');
+
+    const [src, tgt] = await Promise.all([
+      loadImage(sourceUrl),
+      loadImage(targetUrl),
+    ]);
+
+    state.sourceImage = src;
+    state.targetImage = tgt;
+    showWorkspace(false);
+    setTimeout(() => {
+      if (workspaceElements) {
+        workspaceElements.dockCenterButton(() => {
+          startReconstruction();
+        });
+      } else {
+        startReconstruction();
+      }
+    }, 450);
+  } catch (err) {
+    console.error('Failed to load masterpiece images:', err);
+    showToast('Failed to load showcase images');
+  }
 }
 
 function handleSourceUpload(file: File) {

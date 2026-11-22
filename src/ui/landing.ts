@@ -8,7 +8,8 @@ import { SHOWCASES, type DemoShowcase } from '../engine/demo-images.ts';
 export function createLanding(
   onSourceUpload: (file: File) => void,
   onTargetUpload: (file: File) => void,
-  onShowcaseSelect: (showcase: DemoShowcase) => void
+  onShowcaseSelect: (showcase: DemoShowcase) => void,
+  onMasterpieceSelect: () => void
 ): HTMLElement {
   const landing = document.createElement('div');
   landing.className = 'view landing';
@@ -77,6 +78,41 @@ export function createLanding(
   );
 
   uploadRow.append(sourceZone, targetZone);
+
+  // Masterpiece Showcase Banner
+  const masterpieceBox = document.createElement('div');
+  masterpieceBox.className = 'featured-masterpiece-box';
+
+  const mbContent = document.createElement('div');
+  mbContent.className = 'featured-masterpiece-content';
+  mbContent.innerHTML = `
+    <div class="featured-badge">⭐ Recommended Masterpiece Example</div>
+    <h3 class="featured-title">Cosmic Fluid Swirl ➔ Astral Astronaut</h3>
+    <p class="featured-desc">
+      Full-spectrum chromatic liquid pixels (cyan, magenta, gold, and deep space void) rearrange 1:1 into an iconic golden-visor astronaut portrait.
+    </p>
+  `;
+
+  const mbPreviews = document.createElement('div');
+  mbPreviews.className = 'featured-masterpiece-previews';
+  mbPreviews.innerHTML = `
+    <div class="featured-preview-item">
+      <img src="showcase-source.jpg" alt="Source: Cosmic Fluid" />
+      <span>Source</span>
+    </div>
+    <span class="featured-preview-arrow">➔</span>
+    <div class="featured-preview-item">
+      <img src="showcase-target.jpg" alt="Target: Astronaut" />
+      <span>Target</span>
+    </div>
+  `;
+
+  const mbBtn = createButton('✨ Load Masterpiece Example', 'primary', () => {
+    onMasterpieceSelect();
+  });
+  mbBtn.classList.add('btn-featured');
+
+  masterpieceBox.append(mbContent, mbPreviews, mbBtn);
 
   // Showcase section
   const showcaseSection = document.createElement('div');
@@ -168,7 +204,7 @@ export function createLanding(
     features.appendChild(badge);
   }
 
-  landing.append(hero, uploadRow, showcaseSection, howItWorks, features);
+  landing.append(hero, uploadRow, masterpieceBox, showcaseSection, howItWorks, features);
 
   return landing;
 }

@@ -236,6 +236,61 @@ html, body {
   font-size: 0.85rem; font-weight: 600; text-align: center; color: var(--text-primary);
 }
 
+/* ---- Masterpiece Showcase Banner ---- */
+.featured-masterpiece-box {
+  width: 100%; max-width: 860px;
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.75), rgba(15, 23, 42, 0.85));
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem 1.75rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
+  backdrop-filter: blur(16px);
+  flex-wrap: wrap;
+  transition: all 250ms var(--ease);
+}
+.featured-masterpiece-box:hover {
+  border-color: rgba(129, 140, 248, 0.5);
+  box-shadow: 0 12px 40px rgba(99, 102, 241, 0.25);
+}
+.featured-masterpiece-content {
+  flex: 1; min-width: 260px;
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+.featured-badge {
+  font-size: 0.725rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #fbbf24;
+}
+.featured-title {
+  font-size: 1.15rem; font-weight: 700; color: var(--text-primary);
+  margin: 0;
+}
+.featured-desc {
+  font-size: 0.825rem; color: var(--text-secondary); line-height: 1.5;
+  margin: 0;
+}
+.featured-masterpiece-previews {
+  display: flex; align-items: center; gap: 0.85rem;
+}
+.featured-preview-item {
+  display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+}
+.featured-preview-item img {
+  width: 58px; height: 58px; border-radius: var(--radius-sm);
+  object-fit: cover; border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.featured-preview-item span {
+  font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;
+}
+.featured-preview-arrow {
+  color: var(--accent-light); font-size: 1.25rem; font-weight: 700;
+}
+.btn-featured {
+  padding: 0.75rem 1.6rem; font-size: 0.875rem; font-weight: 600;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+}
+
 /* ---- How It Works ---- */
 .how-it-works {
   width: 100%; max-width: 860px;
