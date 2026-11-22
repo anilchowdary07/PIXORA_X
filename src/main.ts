@@ -9,8 +9,16 @@ import { createResults } from './ui/results.ts';
 import { WorkerManager, type ReconstructionResult } from './workers/worker-manager.ts';
 import { ParticleRenderer, AnimationRecorder } from './renderer/particle-renderer.ts';
 import { prepareParticleData } from './renderer/renderer-utils.ts';
-import { loadImage, resizeImage, imageInfoToCanvas, imageDataToBlob, matchDimensions } from './engine/image-utils.ts';
-import { generateDemoSource, generateDemoTarget } from './engine/demo-images.ts';
+import {
+  loadImage,
+  resizeImage,
+  imageInfoToCanvas,
+  imageDataToBlob,
+  matchDimensions,
+  createComparisonCanvas,
+  downloadBlob,
+} from './engine/image-utils.ts';
+import type { DemoShowcase } from './engine/demo-images.ts';
 import type {
   ImageInfo,
   AlgorithmType,
@@ -63,6 +71,24 @@ let workspaceElements: WorkspaceElements | null = null;
 let animCanvas: HTMLCanvasElement | null = null;
 let animFPSInterval: number | null = null;
 
+// ---- Toast Feedback ----
+
+function showToast(message: string) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `<span>✨</span> <span>${message}</span>`;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.transition = 'opacity 300ms ease';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 350);
+  }, 2800);
+}
+
 // ---- Initialize ----
 
 function init() {
@@ -80,12 +106,12 @@ function clearViews() {
   existing.forEach((v) => v.classList.remove('active'));
   setTimeout(() => {
     existing.forEach((v) => v.remove());
-  }, 400);
+  }, 380);
 }
 
 function showView(element: HTMLElement) {
   app.appendChild(element);
-  void element.offsetWidth; // Force reflow for CSS transition
+  void element.offsetWidth; // Force reflow
   requestAnimationFrame(() => element.classList.add('active'));
 }
 
@@ -102,30 +128,41 @@ function showLanding() {
   const landing = createLanding(
     handleSourceUpload,
     handleTargetUpload,
-    handleDemo
+    handleShowcaseSelect
   );
 
   showView(landing);
 }
 
 function handleSourceUpload(file: File) {
-  loadImage(file).then((info) => {
-    state.sourceImage = info;
-    tryTransitionToWorkspace();
-  }).catch((err) => console.error('Failed to load source:', err));
+  loadImage(file)
+    .then((info) => {
+      state.sourceImage = info;
+      showToast(`Source loaded: ${info.width}×${info.height}`);
+      tryTransitionToWorkspace();
+    })
+    .catch((err) => console.error('Failed to load source:', err));
 }
 
 function handleTargetUpload(file: File) {
-  loadImage(file).then((info) => {
-    state.targetImage = info;
-    tryTransitionToWorkspace();
-  }).catch((err) => console.error('Failed to load target:', err));
+  loadImage(file)
+    .then((info) => {
+      state.targetImage = info;
+      showToast(`Target loaded: ${info.width}×${info.height}`);
+      tryTransitionToWorkspace();
+    })
+    .catch((err) => console.error('Failed to load target:', err));
 }
 
-function handleDemo() {
-  state.sourceImage = generateDemoSource(400, 400);
-  state.targetImage = generateDemoTarget(400, 400);
-  tryTransitionToWorkspace();
+function handleShowcaseSelect(showcase: DemoShowcase) {
+  showToast(`Loading: ${showcase.title}...`);
+  state.sourceImage = showcase.getSource();
+  state.targetImage = showcase.getTarget();
+  showWorkspace();
+  // Auto-trigger reconstruction on demo selection
+  setTimeout(() => {
+    startReconstruction();
+  }, 300);
 }
 
 function tryTransitionToWorkspace() {
@@ -170,7 +207,12 @@ function showWorkspace() {
     {
       onReconstruct: startReconstruction,
       onBack: showLanding,
-      onAlgorithmChange: (a) => { state.algorithm = a; },
+      onDownloadOutput: (format) => {
+        downloadOutput(format);
+      },
+      onAlgorithmChange: (a) => {
+        state.algorithm = a;
+      },
       onPresetChange: (p) => {
         state.preset = p;
         if (state.sourceImage && state.targetImage) {
@@ -184,6 +226,7 @@ function showWorkspace() {
       },
       onSegmentationToggle: (enabled) => {
         state.enableSegmentation = enabled;
+        showToast(`AI Saliency ${enabled ? 'Enabled' : 'Disabled'}`);
       },
       onAnimStyleChange: (s) => {
         state.animConfig.style = s;
@@ -213,12 +256,14 @@ function showWorkspace() {
           }
         }
       },
-      onPause: () => { if (renderer) renderer.pause(); },
-      onRestart: () => { if (renderer) renderer.restart(); },
+      onPause: () => {
+        if (renderer) renderer.pause();
+      },
+      onRestart: () => {
+        if (renderer) renderer.restart();
+      },
       onSkip: () => {
-        if (renderer) {
-          renderer.skipToEnd();
-        }
+        if (renderer) renderer.skipToEnd();
       },
     }
   );
@@ -226,7 +271,7 @@ function showWorkspace() {
   workspaceElements = elements;
   showView(elements.container);
 
-  // Measure canvas and probe GPU
+  // Measure canvas and initialize GPU
   requestAnimationFrame(async () => {
     if (animCanvas && workspaceElements) {
       const container = workspaceElements.canvasContainer;
@@ -239,12 +284,11 @@ function showWorkspace() {
       animCanvas.width = w * dpr;
       animCanvas.height = h * dpr;
 
-      // Probe GPU backend
       if (!renderer) {
         renderer = new ParticleRenderer(animCanvas, state.animConfig);
         await renderer.initWebGPUIfSupported();
         const backend = renderer.getBackend();
-        const badgeColor = backend === 'WebGPU' ? '#10b981' : '#6366f1';
+        const badgeColor = backend === 'WebGPU' ? '#10b981' : '#818cf8';
         workspaceElements.statusBackend.innerHTML = `<span style="color:${badgeColor}; font-weight:600;">[${backend}]</span>`;
       }
     }
@@ -260,7 +304,7 @@ async function startReconstruction() {
   if (!workspaceElements) return;
 
   workspaceElements.processingOverlay.classList.remove('hidden');
-  workspaceElements.processingText.textContent = 'Calculating optimal pixel assignment...';
+  workspaceElements.processingText.textContent = 'Calculating optimal pixel rearrangement...';
   workspaceElements.processingFill.style.width = '0%';
 
   const phaseDot = workspaceElements.statusPhase.querySelector('.status-dot');
@@ -319,7 +363,7 @@ async function startAnimation(result: ReconstructionResult) {
 
   if (workspaceElements) {
     const backend = renderer.getBackend();
-    const badgeColor = backend === 'WebGPU' ? '#10b981' : '#6366f1';
+    const badgeColor = backend === 'WebGPU' ? '#10b981' : '#818cf8';
     workspaceElements.statusBackend.innerHTML = `<span style="color:${badgeColor}; font-weight:600;">[${backend}]</span>`;
   }
 
@@ -343,10 +387,7 @@ async function startAnimation(result: ReconstructionResult) {
 
   renderer.play(
     async () => {
-      // Stop recorder
       state.recordedVideoBlob = await recorder.stop();
-
-      // Transition to results
       setTimeout(() => showResults(result), 600);
     },
     (progress) => {
@@ -360,6 +401,35 @@ async function startAnimation(result: ReconstructionResult) {
   if (workspaceElements) {
     const phaseText = workspaceElements.statusPhase.querySelector('span:last-child');
     if (phaseText) phaseText.textContent = 'Transforming';
+  }
+}
+
+// ---- Output Downloads ----
+
+async function downloadOutput(format = 'image/png') {
+  if (!state.result) {
+    // If not reconstructed yet, start it
+    showToast('Calculating reconstruction first...');
+    await startReconstruction();
+    if (!state.result) return;
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = state.result.width;
+    canvas.height = state.result.height;
+    const ctx = canvas.getContext('2d')!;
+    const imgData = ctx.createImageData(state.result.width, state.result.height);
+    imgData.data.set(state.result.reconstructedPixels);
+    ctx.putImageData(imgData, 0, 0);
+
+    const blob = await imageDataToBlob(imgData, format, 0.95);
+    const ext = format.split('/')[1] || 'png';
+    downloadBlob(blob, `pixora-x-reconstruction.${ext}`);
+    showToast(`Downloaded reconstructed image (${ext.toUpperCase()})`);
+  } catch (err) {
+    console.error('Download error:', err);
+    showToast('Failed to download image');
   }
 }
 
@@ -394,23 +464,54 @@ function showResults(result: ReconstructionResult) {
     reconCanvas,
     metrics,
     state.recordedVideoBlob,
-    async (format, quality) => {
-      try {
-        const blob = await imageDataToBlob(imgData, format, quality);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const ext = format.split('/')[1] || 'png';
-        a.download = `pixora-x-reconstruction.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        console.error('Export error:', err);
-      }
-    },
-    showLanding
+    {
+      onExport: async (format, quality) => {
+        try {
+          const blob = await imageDataToBlob(imgData, format, quality);
+          const ext = format.split('/')[1] || 'png';
+          downloadBlob(blob, `pixora-x-output.${ext}`);
+          showToast(`Exported ${ext.toUpperCase()} successfully!`);
+        } catch (err) {
+          console.error('Export error:', err);
+        }
+      },
+      onExportComparison: async () => {
+        if (!state.processedTarget) return;
+        try {
+          const compCanvas = createComparisonCanvas(
+            state.processedTarget,
+            result.reconstructedPixels,
+            `${(result.quality * 100).toFixed(1)}%`,
+            result.algorithm
+          );
+          compCanvas.toBlob((blob) => {
+            if (blob) {
+              downloadBlob(blob, 'pixora-x-comparison-card.png');
+              showToast('Downloaded comparison card!');
+            }
+          }, 'image/png');
+        } catch (err) {
+          console.error('Comparison export error:', err);
+        }
+      },
+      onCopyToClipboard: async () => {
+        try {
+          const blob = await imageDataToBlob(imgData, 'image/png');
+          if (navigator.clipboard && (window as any).ClipboardItem) {
+            await navigator.clipboard.write([
+              new (window as any).ClipboardItem({ 'image/png': blob }),
+            ]);
+            showToast('Copied reconstructed image to clipboard! 📋');
+          } else {
+            showToast('Clipboard copy not supported on this browser');
+          }
+        } catch (err) {
+          console.error('Clipboard copy error:', err);
+          showToast('Could not copy to clipboard');
+        }
+      },
+      onNewReconstruction: showLanding,
+    }
   );
 
   showView(resultsView);

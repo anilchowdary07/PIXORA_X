@@ -9,6 +9,7 @@ import { ALGORITHM_LABELS, PRESET_CONFIG, ANIMATION_LABELS } from '../engine/typ
 export interface WorkspaceCallbacks {
   onReconstruct: () => void;
   onBack: () => void;
+  onDownloadOutput: (format: string) => void;
   onAlgorithmChange: (a: AlgorithmType) => void;
   onPresetChange: (p: QualityPreset) => void;
   onSegmentationToggle: (enabled: boolean) => void;
@@ -35,6 +36,8 @@ export interface WorkspaceElements {
   processingFill: HTMLElement;
   canvasContainer: HTMLElement;
   segmentationBtn: HTMLButtonElement;
+  downloadBtn: HTMLButtonElement;
+  reconstructBtn: HTMLButtonElement;
 }
 
 export function createWorkspace(
@@ -82,16 +85,17 @@ export function createWorkspace(
 
   let isSegActive = enableSegmentation;
   const segmentationBtn = createButton(
-    isSegActive ? '🎯 AI Saliency: ON' : '🎯 AI Saliency: OFF',
+    isSegActive ? '🎯 Saliency: ON' : '🎯 Saliency: OFF',
     isSegActive ? 'primary' : 'secondary',
     () => {
       isSegActive = !isSegActive;
-      segmentationBtn.textContent = isSegActive ? '🎯 AI Saliency: ON' : '🎯 AI Saliency: OFF';
-      segmentationBtn.className = `btn btn-${isSegActive ? 'primary' : 'secondary'}`;
+      segmentationBtn.textContent = isSegActive ? '🎯 Saliency: ON' : '🎯 Saliency: OFF';
+      segmentationBtn.className = `btn btn-${isSegActive ? 'primary' : 'secondary'} btn-sm`;
       callbacks.onSegmentationToggle(isSegActive);
     }
   );
-  segmentationBtn.title = 'Prioritize subject pixels over background pixels using saliency mapping';
+  segmentationBtn.classList.add('btn-sm');
+  segmentationBtn.title = 'Prioritize focal subject pixels over background pixels using saliency mapping';
 
   toolbarLeft.append(backBtn, sep1, title);
 
@@ -99,8 +103,16 @@ export function createWorkspace(
   toolbarRight.className = 'toolbar-right';
 
   const reconstructBtn = createButton('⚡ Reconstruct', 'primary', callbacks.onReconstruct);
+  reconstructBtn.classList.add('btn-sm');
 
-  toolbarRight.append(algoSelect, presetSelect, segmentationBtn, reconstructBtn);
+  // Prominent Download Output Button
+  const downloadBtn = createButton('💾 Download Output', 'secondary', () => {
+    callbacks.onDownloadOutput('image/png');
+  });
+  downloadBtn.classList.add('btn-sm');
+  downloadBtn.title = 'Download the reconstructed output image (PNG)';
+
+  toolbarRight.append(algoSelect, presetSelect, segmentationBtn, reconstructBtn, downloadBtn);
   toolbar.append(toolbarLeft, toolbarRight);
 
   // ---- Content ----
@@ -142,7 +154,7 @@ export function createWorkspace(
   // Right panel: target preview
   const rightPanel = document.createElement('div');
   rightPanel.className = 'preview-panel';
-  rightPanel.appendChild(createImagePreview(targetCanvas, 'Target (Goal)'));
+  rightPanel.appendChild(createImagePreview(targetCanvas, 'Target (Structure)'));
 
   content.append(leftPanel, canvasContainer, rightPanel);
 
@@ -252,5 +264,7 @@ export function createWorkspace(
     processingFill,
     canvasContainer,
     segmentationBtn,
+    downloadBtn,
+    reconstructBtn,
   };
 }

@@ -1,5 +1,5 @@
 // ============================================================
-// Pixel Mosaic X — Image Loading & Processing Utilities
+// PIXORA X — Image Loading & Processing Utilities
 // ============================================================
 
 import type { ImageInfo } from './types.ts';
@@ -92,7 +92,6 @@ export function matchDimensions(
   const targetH = target.height;
   const targetPixels = targetW * targetH;
 
-  // Resize source to have the same total pixels as target
   const srcCanvas = document.createElement('canvas');
   srcCanvas.width = targetW;
   srcCanvas.height = targetH;
@@ -131,7 +130,10 @@ export function reconstructImage(
   const w = target.width;
   const h = target.height;
   const n = w * h;
-  const result = new Uint8ClampedArray(n * 4);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  const imgData = ctx.createImageData(w, h);
+  const result = imgData.data;
 
   for (let i = 0; i < n; i++) {
     const si = mapping[i];
@@ -143,7 +145,7 @@ export function reconstructImage(
     result[to + 3] = 255;
   }
 
-  return new ImageData(result, w, h);
+  return imgData;
 }
 
 /**
@@ -192,7 +194,7 @@ export function imageInfoToCanvas(info: ImageInfo): HTMLCanvasElement {
 export function canvasToBlob(
   canvas: HTMLCanvasElement,
   format: string = 'image/png',
-  quality: number = 0.92
+  quality: number = 0.95
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -212,7 +214,7 @@ export function canvasToBlob(
 export function imageDataToBlob(
   imageData: ImageData,
   format: string = 'image/png',
-  quality: number = 0.92
+  quality: number = 0.95
 ): Promise<Blob> {
   const canvas = document.createElement('canvas');
   canvas.width = imageData.width;
@@ -220,4 +222,90 @@ export function imageDataToBlob(
   const ctx = canvas.getContext('2d')!;
   ctx.putImageData(imageData, 0, 0);
   return canvasToBlob(canvas, format, quality);
+}
+
+/**
+ * Download a Blob to the user's filesystem.
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Generate a branded side-by-side comparison canvas.
+ */
+export function createComparisonCanvas(
+  target: ImageInfo,
+  reconstructedPixels: Uint8ClampedArray,
+  qualityPct: string,
+  algorithm: string
+): HTMLCanvasElement {
+  const w = target.width;
+  const h = target.height;
+  const gap = 20;
+  const headerH = 64;
+  const footerH = 44;
+  const totalW = w * 2 + gap + 32;
+  const totalH = h + headerH + footerH;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = totalW;
+  canvas.height = totalH;
+  const ctx = canvas.getContext('2d')!;
+
+  // Background
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  // Top header branding
+  ctx.fillStyle = '#e8e8f0';
+  ctx.font = '700 18px Inter, sans-serif';
+  ctx.fillText('PIXORA X', 16, 38);
+
+  ctx.fillStyle = '#8888a0';
+  ctx.font = '400 12px Inter, sans-serif';
+  ctx.fillText('Strict Pixel Reconstruction Experience (1:1 Provenance)', 115, 38);
+
+  // Draw Original Target
+  const origCanvas = imageInfoToCanvas(target);
+  ctx.drawImage(origCanvas, 16, headerH, w, h);
+
+  // Draw Reconstructed
+  const reconCanvas = document.createElement('canvas');
+  reconCanvas.width = w;
+  reconCanvas.height = h;
+  const reconCtx = reconCanvas.getContext('2d')!;
+  const reconImgData = reconCtx.createImageData(w, h);
+  reconImgData.data.set(reconstructedPixels);
+  reconCtx.putImageData(reconImgData, 0, 0);
+  ctx.drawImage(reconCanvas, 16 + w + gap, headerH, w, h);
+
+  // Card subheadings
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(16, headerH, w, 28);
+  ctx.fillRect(16 + w + gap, headerH, w, 28);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '600 11px Inter, sans-serif';
+  ctx.fillText('ORIGINAL TARGET', 24, headerH + 18);
+  ctx.fillText('RECONSTRUCTED (SOURCE PIXELS)', 24 + w + gap, headerH + 18);
+
+  // Footer metrics
+  ctx.fillStyle = '#818cf8';
+  ctx.font = '600 12px Inter, sans-serif';
+  ctx.fillText(`Algorithm: ${algorithm}  |  Quality: ${qualityPct}`, 16, totalH - 16);
+
+  ctx.fillStyle = '#555570';
+  ctx.font = '400 11px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('anilchowdary07.github.io/PIXORA_X', totalW - 16, totalH - 16);
+
+  return canvas;
 }

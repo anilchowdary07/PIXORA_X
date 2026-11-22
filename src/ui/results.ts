@@ -1,17 +1,23 @@
 // ============================================================
-// PIXORA X — Results View with Interactive Split Comparison
+// PIXORA X — Results View with Multi-Format Export Center
 // ============================================================
 
-import { createButton, createSelect } from './controls.ts';
+import { createButton } from './controls.ts';
 import type { ReconstructionMetrics } from '../engine/types.ts';
+
+export interface ResultsCallbacks {
+  onExport: (format: string, quality: number) => void;
+  onExportComparison: () => void;
+  onCopyToClipboard: () => void;
+  onNewReconstruction: () => void;
+}
 
 export function createResults(
   targetCanvas: HTMLCanvasElement,
   reconstructedCanvas: HTMLCanvasElement,
   metrics: ReconstructionMetrics,
   recordedVideoBlob: Blob | null,
-  onExport: (format: string, quality: number) => void,
-  onNewReconstruction: () => void
+  callbacks: ResultsCallbacks
 ): HTMLElement {
   const results = document.createElement('div');
   results.className = 'view results';
@@ -24,7 +30,7 @@ export function createResults(
   title.className = 'results-title';
   title.textContent = 'Reconstruction Complete';
 
-  const newBtn = createButton('← New Reconstruction', 'secondary', onNewReconstruction);
+  const newBtn = createButton('← Start New Reconstruction', 'secondary', callbacks.onNewReconstruction);
   header.append(title, newBtn);
 
   // Interactive Comparison Viewer (Split Slider)
@@ -81,7 +87,6 @@ export function createResults(
     pointer-events: none;
   `;
 
-  // Update overlay width on container resize
   const ro = new ResizeObserver((entries) => {
     for (const entry of entries) {
       overlayImg.style.width = `${entry.contentRect.width}px`;
@@ -129,11 +134,11 @@ export function createResults(
 
   // Labels
   const labelLeft = document.createElement('div');
-  labelLeft.style.cssText = 'position: absolute; top: 12px; left: 16px; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; pointer-events: none;';
+  labelLeft.style.cssText = 'position: absolute; top: 12px; left: 16px; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); padding: 5px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; pointer-events: none; color: #a5b4fc;';
   labelLeft.textContent = '✨ Reconstructed (Source Pixels)';
 
   const labelRight = document.createElement('div');
-  labelRight.style.cssText = 'position: absolute; top: 12px; right: 16px; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; pointer-events: none;';
+  labelRight.style.cssText = 'position: absolute; top: 12px; right: 16px; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); padding: 5px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; pointer-events: none; color: #e8e8f0;';
   labelRight.textContent = '🎯 Original Target';
 
   comparisonContainer.append(baseImg, overlayWrap, divider, labelLeft, labelRight);
@@ -162,7 +167,7 @@ export function createResults(
 
   const sliderHint = document.createElement('div');
   sliderHint.style.cssText = 'font-size: 0.8rem; color: var(--text-muted);';
-  sliderHint.textContent = 'Drag slider left/right to inspect reconstruction quality against original target';
+  sliderHint.textContent = 'Drag slider left/right to compare reconstructed source pixels against target geometry';
   comparisonWrap.append(comparisonContainer, sliderHint);
 
   // Metrics
@@ -194,46 +199,62 @@ export function createResults(
     metricsRow.appendChild(card);
   }
 
-  // Export actions
-  const actions = document.createElement('div');
-  actions.className = 'results-actions';
+  // Multi-Format Export Center
+  const exportCenter = document.createElement('div');
+  exportCenter.className = 'export-center';
 
-  let selectedFormat = 'image/png';
-  let selectedQuality = 0.95;
+  const exportTitle = document.createElement('div');
+  exportTitle.className = 'export-center-title';
+  exportTitle.textContent = 'Download & Export Options';
 
-  const formatSelect = createSelect(
-    'Format',
-    [
-      { value: 'image/png', label: 'PNG' },
-      { value: 'image/jpeg', label: 'JPEG' },
-      { value: 'image/webp', label: 'WebP' },
-    ],
-    'image/png',
-    (v) => { selectedFormat = v; }
-  );
+  const exportButtons = document.createElement('div');
+  exportButtons.className = 'export-buttons-grid';
 
-  const exportBtn = createButton('💾 Download Image', 'primary', () => {
-    onExport(selectedFormat, selectedQuality);
+  // 1. Download PNG
+  const pngBtn = createButton('💾 Download PNG (Lossless)', 'primary', () => {
+    callbacks.onExport('image/png', 1.0);
   });
 
-  actions.append(formatSelect, exportBtn);
+  // 2. Download JPEG
+  const jpgBtn = createButton('🖼️ Download JPEG', 'secondary', () => {
+    callbacks.onExport('image/jpeg', 0.95);
+  });
 
-  // If video was recorded, show video download button
+  // 3. Download WebP
+  const webpBtn = createButton('🌐 Download WebP', 'secondary', () => {
+    callbacks.onExport('image/webp', 0.95);
+  });
+
+  // 4. Download Side-by-Side Comparison
+  const compareBtn = createButton('📊 Download Comparison Card', 'secondary', () => {
+    callbacks.onExportComparison();
+  });
+
+  // 5. Copy to Clipboard
+  const copyBtn = createButton('📋 Copy Image to Clipboard', 'secondary', () => {
+    callbacks.onCopyToClipboard();
+  });
+
+  exportButtons.append(pngBtn, jpgBtn, webpBtn, compareBtn, copyBtn);
+
+  // 6. Download WebM Video (if recorded)
   if (recordedVideoBlob) {
-    const videoBtn = createButton('🎥 Download Animation (WebM)', 'secondary', () => {
+    const videoBtn = createButton('🎥 Download Animation (WebM)', 'primary', () => {
       const url = URL.createObjectURL(recordedVideoBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'pixora-x-animation.webm';
+      a.download = 'pixora-x-reconstruction-animation.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
-    actions.appendChild(videoBtn);
+    exportButtons.appendChild(videoBtn);
   }
 
-  results.append(header, comparisonWrap, metricsRow, actions);
+  exportCenter.append(exportTitle, exportButtons);
+
+  results.append(header, comparisonWrap, metricsRow, exportCenter);
 
   return results;
 }
