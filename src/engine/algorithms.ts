@@ -1,7 +1,7 @@
 // ============================================================
 // Pixel Mosaic X — Advanced 3D Color-Quantized Reconstruction
-// True 3D Euclidean Color Optimization in CIE Lab & Perceptual Spaces
-// Strict 1:1 Bijective Pixel Provenance Guaranteed
+// True 3D Euclidean Color Optimization in CIE Lab, HSV Cone & Spatial Spaces
+// Strict 1:1 Bijective Pixel Provenance Guaranteed Across All Methods
 // ============================================================
 
 import type { ImageInfo, MatchResult, AlgorithmType } from './types.ts';
@@ -161,47 +161,36 @@ function match3DColorGrid(
     }
   }
 
-  // Pass 3: Global Euclidean search for remaining extreme color outliers
+  // Pass 3: Tonal luminance matching for remaining out-of-gamut outlier pixels
+  // Ensures highlights, midtones, and shadows remain crisp even across disparate color gamuts
   if (stillUnmatchedCount > 0) {
-    const activeBins: number[] = [];
+    const remainingSource: number[] = [];
     for (let b = 0; b < TOTAL_BINS; b++) {
-      if (head[b] !== -1) activeBins.push(b);
+      let curr = head[b];
+      while (curr !== -1) {
+        remainingSource.push(curr);
+        curr = next[curr];
+      }
     }
 
-    for (let idx = 0; idx < stillUnmatchedCount; idx++) {
-      const j = stillUnmatched[idx];
-      const tl = tgtCoords[j * 3];
-      const ta = tgtCoords[j * 3 + 1];
-      const tb = tgtCoords[j * 3 + 2];
+    remainingSource.sort((a, b) => {
+      const ao = a * 4;
+      const bo = b * 4;
+      return brightness(srcPixels[ao], srcPixels[ao + 1], srcPixels[ao + 2]) -
+             brightness(srcPixels[bo], srcPixels[bo + 1], srcPixels[bo + 2]);
+    });
 
-      let bestDist = Infinity;
-      let bestActiveIdx = -1;
+    const stillUnmatchedSorted = Array.from(stillUnmatched.subarray(0, stillUnmatchedCount));
+    stillUnmatchedSorted.sort((a, b) => {
+      const ao = a * 4;
+      const bo = b * 4;
+      return brightness(tgtPixels[ao], tgtPixels[ao + 1], tgtPixels[ao + 2]) -
+             brightness(tgtPixels[bo], tgtPixels[bo + 1], tgtPixels[bo + 2]);
+    });
 
-      for (let ab = 0; ab < activeBins.length; ab++) {
-        const b = activeBins[ab];
-        const bl = (b >> 10) & 0x1F;
-        const ba = (b >> 5) & 0x1F;
-        const bb = b & 0x1F;
-        const dl = tl - bl;
-        const da = ta - ba;
-        const db = tb - bb;
-        const d2 = dl * dl + da * da + db * db;
-        if (d2 < bestDist) {
-          bestDist = d2;
-          bestActiveIdx = ab;
-        }
-      }
-
-      if (bestActiveIdx !== -1) {
-        const b = activeBins[bestActiveIdx];
-        const s = head[b];
-        head[b] = next[s];
-        sourceIndices[j] = s;
-        if (head[b] === -1) {
-          activeBins[bestActiveIdx] = activeBins[activeBins.length - 1];
-          activeBins.pop();
-        }
-      }
+    const remCount = Math.min(remainingSource.length, stillUnmatchedSorted.length);
+    for (let k = 0; k < remCount; k++) {
+      sourceIndices[stillUnmatchedSorted[k]] = remainingSource[k];
     }
   }
 
@@ -212,9 +201,12 @@ function match3DColorGrid(
 }
 
 // ------------------------------------------------------------
-// Color Coordinate Mappers
+// Color Coordinate Mappers (Each Algorithm Uses a Distinct Metric)
 // ------------------------------------------------------------
 
+/**
+ * CIE Lab coordinates: Human perceptual lightness & opponent color axes.
+ */
 function labCoords(r: number, g: number, b: number): [number, number, number] {
   const [L, a, bVal] = rgbToLab(r, g, b);
   const lBin = Math.max(0, Math.min(31, Math.floor((L / 100) * 31.99)));
@@ -223,20 +215,36 @@ function labCoords(r: number, g: number, b: number): [number, number, number] {
   return [lBin, aBin, bBin];
 }
 
-function hsvCoords(r: number, g: number, b: number): [number, number, number] {
+/**
+ * HSV Cone coordinates: Cylindrical projection preserving circular Hue & Saturation.
+ * x = S * cos(H), y = S * sin(H), z = V
+ */
+function hsvConeCoords(r: number, g: number, b: number): [number, number, number] {
   const [h, s, v] = rgbToHsv(r, g, b);
-  const hBin = Math.max(0, Math.min(31, Math.floor((h / 360) * 31.99)));
-  const sBin = Math.max(0, Math.min(31, Math.floor(s * 31.99)));
-  const vBin = Math.max(0, Math.min(31, Math.floor(v * 31.99)));
-  return [hBin, sBin, vBin];
+  const rad = (h * Math.PI) / 180;
+  const x = s * Math.cos(rad);
+  const y = s * Math.sin(rad);
+  const z = v;
+  // x in [-1, 1], y in [-1, 1], z in [0, 1]
+  const xBin = Math.max(0, Math.min(31, Math.floor((x + 1) * 15.99)));
+  const yBin = Math.max(0, Math.min(31, Math.floor((y + 1) * 15.99)));
+  const zBin = Math.max(0, Math.min(31, Math.floor(z * 31.99)));
+  return [xBin, yBin, zBin];
 }
 
-function rgbPerceptualCoords(r: number, g: number, b: number): [number, number, number] {
-  return [r >> 3, g >> 3, b >> 3];
+/**
+ * Multi-dimensional Perceptual Coordinates:
+ * Combines luminance Y with red-green and blue-yellow chroma differentials.
+ */
+function multiFeatureCoords(r: number, g: number, b: number): [number, number, number] {
+  const Y = Math.round(brightness(r, g, b)) & 0xFF;
+  const rgDiff = Math.max(0, Math.min(255, r - g + 128));
+  const byDiff = Math.max(0, Math.min(255, b - ((r + g) >> 1) + 128));
+  return [Y >> 3, rgDiff >> 3, byDiff >> 3];
 }
 
 // ------------------------------------------------------------
-// 1D Sort Fallback for Luminance
+// 1D Tonal Sort for Brightness (Chiaroscuro)
 // ------------------------------------------------------------
 
 interface IndexedKey {
@@ -270,6 +278,161 @@ function sortMatch(
   const sourceIndices = new Uint32Array(n);
   for (let i = 0; i < n; i++) {
     sourceIndices[tgtKeys[i].index] = srcKeys[i].index;
+  }
+
+  const duration = performance.now() - t0;
+  const quality = estimateQuality(source, target, sourceIndices);
+
+  return { sourceIndices, quality, duration, algorithm: algorithmName };
+}
+
+// ------------------------------------------------------------
+// Block-Based Regional & Spatial Matching Engine
+// ------------------------------------------------------------
+
+function matchBlockBased(
+  source: ImageInfo,
+  target: ImageInfo,
+  gridSize: number,
+  algorithmName: string,
+  _enableSegmentation = false
+): MatchResult {
+  const t0 = performance.now();
+  const n = Math.min(source.totalPixels, target.totalPixels);
+  const sourceIndices = new Uint32Array(n);
+
+  const srcW = source.width;
+  const srcH = source.height;
+  const tgtW = target.width;
+  const tgtH = target.height;
+  const totalBlocks = gridSize * gridSize;
+
+  // Group pixels into spatial blocks
+  const srcBlocks: number[][] = Array.from({ length: totalBlocks }, () => []);
+  const tgtBlocks: number[][] = Array.from({ length: totalBlocks }, () => []);
+
+  for (let i = 0; i < n; i++) {
+    const sx = i % srcW;
+    const sy = (i / srcW) | 0;
+    const sBlock = Math.min(gridSize - 1, (sy / srcH * gridSize) | 0) * gridSize +
+                   Math.min(gridSize - 1, (sx / srcW * gridSize) | 0);
+    srcBlocks[sBlock].push(i);
+
+    const tx = i % tgtW;
+    const ty = (i / tgtW) | 0;
+    const tBlock = Math.min(gridSize - 1, (ty / tgtH * gridSize) | 0) * gridSize +
+                   Math.min(gridSize - 1, (tx / tgtW * gridSize) | 0);
+    tgtBlocks[tBlock].push(i);
+  }
+
+  const usedSource = new Uint8Array(n);
+  const unmatchedTargets: number[] = [];
+
+  // Match pixels within each spatial block using 3D Lab color quantization
+  const BINS = 4096; // 16x16x16 bins
+  const bHead = new Int32Array(BINS);
+  const bNext = new Int32Array(n);
+
+  for (let b = 0; b < totalBlocks; b++) {
+    const srcList = srcBlocks[b];
+    const tgtList = tgtBlocks[b];
+    if (tgtList.length === 0 || srcList.length === 0) {
+      for (let k = 0; k < tgtList.length; k++) unmatchedTargets.push(tgtList[k]);
+      continue;
+    }
+
+    bHead.fill(-1);
+    for (let k = 0; k < srcList.length; k++) {
+      const si = srcList[k];
+      const off = si * 4;
+      const [l, a, bVal] = rgbToLab(source.pixels[off], source.pixels[off + 1], source.pixels[off + 2]);
+      const lb = Math.max(0, Math.min(15, (l * 0.16) | 0));
+      const ab = Math.max(0, Math.min(15, ((a + 110) * 0.072) | 0));
+      const bb = Math.max(0, Math.min(15, ((bVal + 110) * 0.072) | 0));
+      const bin = (lb << 8) | (ab << 4) | bb;
+      bNext[k] = bHead[bin];
+      bHead[bin] = k;
+    }
+
+    const blockUnmatched: number[] = [];
+    for (let k = 0; k < tgtList.length; k++) {
+      const ti = tgtList[k];
+      const off = ti * 4;
+      const [l, a, bVal] = rgbToLab(target.pixels[off], target.pixels[off + 1], target.pixels[off + 2]);
+      const lb = Math.max(0, Math.min(15, (l * 0.16) | 0));
+      const ab = Math.max(0, Math.min(15, ((a + 110) * 0.072) | 0));
+      const bb = Math.max(0, Math.min(15, ((bVal + 110) * 0.072) | 0));
+      const bin = (lb << 8) | (ab << 4) | bb;
+
+      if (bHead[bin] !== -1) {
+        const sSub = bHead[bin];
+        bHead[bin] = bNext[sSub];
+        const si = srcList[sSub];
+        sourceIndices[ti] = si;
+        usedSource[si] = 1;
+      } else {
+        blockUnmatched.push(ti);
+      }
+    }
+
+    // Secondary pass within block: sort unmatched pixels by brightness for optimal tonal matching
+    const remainingSrcInBlock: number[] = [];
+    for (let k = 0; k < srcList.length; k++) {
+      const si = srcList[k];
+      if (usedSource[si] === 0) remainingSrcInBlock.push(si);
+    }
+
+    remainingSrcInBlock.sort((a, b) => {
+      const ao = a * 4;
+      const bo = b * 4;
+      return brightness(source.pixels[ao], source.pixels[ao + 1], source.pixels[ao + 2]) -
+             brightness(source.pixels[bo], source.pixels[bo + 1], source.pixels[bo + 2]);
+    });
+
+    blockUnmatched.sort((a, b) => {
+      const ao = a * 4;
+      const bo = b * 4;
+      return brightness(target.pixels[ao], target.pixels[ao + 1], target.pixels[ao + 2]) -
+             brightness(target.pixels[bo], target.pixels[bo + 1], target.pixels[bo + 2]);
+    });
+
+    const matchLen = Math.min(remainingSrcInBlock.length, blockUnmatched.length);
+    for (let k = 0; k < matchLen; k++) {
+      const si = remainingSrcInBlock[k];
+      const ti = blockUnmatched[k];
+      sourceIndices[ti] = si;
+      usedSource[si] = 1;
+    }
+
+    for (let k = matchLen; k < blockUnmatched.length; k++) {
+      unmatchedTargets.push(blockUnmatched[k]);
+    }
+  }
+
+  // Inter-block spillover for remaining unmatched targets
+  if (unmatchedTargets.length > 0) {
+    const globalRemaining: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (usedSource[i] === 0) globalRemaining.push(i);
+    }
+
+    globalRemaining.sort((a, b) => {
+      const ao = a * 4;
+      const bo = b * 4;
+      return brightness(source.pixels[ao], source.pixels[ao + 1], source.pixels[ao + 2]) -
+             brightness(source.pixels[bo], source.pixels[bo + 1], source.pixels[bo + 2]);
+    });
+    unmatchedTargets.sort((a, b) => {
+      const ao = a * 4;
+      const bo = b * 4;
+      return brightness(target.pixels[ao], target.pixels[ao + 1], target.pixels[ao + 2]) -
+             brightness(target.pixels[bo], target.pixels[bo + 1], target.pixels[bo + 2]);
+    });
+
+    const count = Math.min(globalRemaining.length, unmatchedTargets.length);
+    for (let k = 0; k < count; k++) {
+      sourceIndices[unmatchedTargets[k]] = globalRemaining[k];
+    }
   }
 
   const duration = performance.now() - t0;
@@ -315,152 +478,59 @@ export function estimateQuality(
   }
 
   const avgDiff = totalDiff / count;
-  // Maximum redmean distance is approx 765
   return Math.max(0, Math.min(1, 1 - avgDiff / 650));
 }
 
 // ------------------------------------------------------------
-// Public Algorithms
+// Public Algorithms (6 Distinct Reconstruction Philosophies)
 // ------------------------------------------------------------
 
 /**
- * CIE Lab Perceptual Matching:
- * Gold-standard 3D color matching using Euclidean distances in CIE Lab space.
+ * 1. CIE Lab Perceptual Matching:
+ * Gold-standard human vision perceptual Euclidean matching in D65 Lab space.
  */
 export function matchLab(source: ImageInfo, target: ImageInfo, enableSegmentation = false): MatchResult {
   return match3DColorGrid(source, target, labCoords, 'lab', enableSegmentation);
 }
 
 /**
- * HSV Color Matching:
- * 3D Color-Quantized matching in Hue-Saturation-Value space.
+ * 2. HSV Harmonic Matching:
+ * 3D cylindrical HSV cone projection preserving circular Hue and color saturation.
  */
 export function matchHSV(source: ImageInfo, target: ImageInfo, enableSegmentation = false): MatchResult {
-  return match3DColorGrid(source, target, hsvCoords, 'hsv', enableSegmentation);
+  return match3DColorGrid(source, target, hsvConeCoords, 'hsv', enableSegmentation);
 }
 
 /**
- * Multi-dimensional Matching:
- * Perceptual sRGB 3D color quantization with balanced channel sensitivity.
+ * 3. Multi-Dimensional Feature Matching:
+ * Balanced color perception and luminance contrast differentials.
  */
 export function matchMultidimensional(source: ImageInfo, target: ImageInfo, enableSegmentation = false): MatchResult {
-  return match3DColorGrid(source, target, rgbPerceptualCoords, 'multidimensional', enableSegmentation);
+  return match3DColorGrid(source, target, multiFeatureCoords, 'multidimensional', enableSegmentation);
 }
 
 /**
- * Brightness Sort:
- * Sorts pixels by perceived luminance ITU-R BT.601.
+ * 4. Brightness Sort:
+ * Strict 1:1 luminance sort (ITU-R BT.601) yielding dramatic chiaroscuro tonal shading.
  */
 export function matchBrightness(source: ImageInfo, target: ImageInfo, enableSegmentation = false): MatchResult {
   return sortMatch(source, target, (r, g, b) => brightness(r, g, b), 'brightness', enableSegmentation);
 }
 
 /**
- * Spatial-Aware Assignment:
- * Matches within local 8x8 spatial blocks, preserving regional structures while matching colors.
+ * 5. Spatial-Aware Flow Assignment:
+ * Matches within local 8x8 spatial blocks, preserving regional structures and creating smooth particle trajectories.
  */
 export function matchSpatial(source: ImageInfo, target: ImageInfo, enableSegmentation = false): MatchResult {
-  const t0 = performance.now();
-  const n = Math.min(source.totalPixels, target.totalPixels);
-  const sourceIndices = new Uint32Array(n);
-
-  const gridSize = 8;
-  const srcW = source.width;
-  const srcH = source.height;
-  const tgtW = target.width;
-  const tgtH = target.height;
-
-  // Bucket pixels by grid region
-  const srcBuckets: number[][] = Array.from({ length: gridSize * gridSize }, () => []);
-  const tgtBuckets: number[][] = Array.from({ length: gridSize * gridSize }, () => []);
-
-  for (let i = 0; i < n; i++) {
-    const sx = i % srcW;
-    const sy = (i / srcW) | 0;
-    const sgx = Math.min(gridSize - 1, (sx / srcW * gridSize) | 0);
-    const sgy = Math.min(gridSize - 1, (sy / srcH * gridSize) | 0);
-    srcBuckets[sgy * gridSize + sgx].push(i);
-
-    const tx = i % tgtW;
-    const ty = (i / tgtW) | 0;
-    const tgx = Math.min(gridSize - 1, (tx / tgtW * gridSize) | 0);
-    const tgy = Math.min(gridSize - 1, (ty / tgtH * gridSize) | 0);
-    tgtBuckets[tgy * gridSize + tgx].push(i);
-  }
-
-  const usedSource = new Uint8Array(n);
-  const unmatchedTargets: number[] = [];
-
-  // Match inside each spatial block using Lab color distance
-  for (let reg = 0; reg < gridSize * gridSize; reg++) {
-    const srcList = srcBuckets[reg];
-    const tgtList = tgtBuckets[reg];
-    if (tgtList.length === 0) continue;
-
-    // Sort both by Lab brightness within block
-    srcList.sort((a, b) => {
-      const ao = a * 4;
-      const bo = b * 4;
-      return brightness(source.pixels[ao], source.pixels[ao + 1], source.pixels[ao + 2]) -
-             brightness(source.pixels[bo], source.pixels[bo + 1], source.pixels[bo + 2]);
-    });
-    tgtList.sort((a, b) => {
-      const ao = a * 4;
-      const bo = b * 4;
-      return brightness(target.pixels[ao], target.pixels[ao + 1], target.pixels[ao + 2]) -
-             brightness(target.pixels[bo], target.pixels[bo + 1], target.pixels[bo + 2]);
-    });
-
-    const matchCount = Math.min(srcList.length, tgtList.length);
-    for (let k = 0; k < matchCount; k++) {
-      const s = srcList[k];
-      const t = tgtList[k];
-      sourceIndices[t] = s;
-      usedSource[s] = 1;
-    }
-
-    for (let k = matchCount; k < tgtList.length; k++) {
-      unmatchedTargets.push(tgtList[k]);
-    }
-  }
-
-  // Assign remaining source pixels to unmatched targets
-  if (unmatchedTargets.length > 0) {
-    const remainingSource: number[] = [];
-    for (let i = 0; i < n; i++) {
-      if (usedSource[i] === 0) remainingSource.push(i);
-    }
-
-    remainingSource.sort((a, b) => {
-      const ao = a * 4;
-      const bo = b * 4;
-      return brightness(source.pixels[ao], source.pixels[ao + 1], source.pixels[ao + 2]) -
-             brightness(source.pixels[bo], source.pixels[bo + 1], source.pixels[bo + 2]);
-    });
-    unmatchedTargets.sort((a, b) => {
-      const ao = a * 4;
-      const bo = b * 4;
-      return brightness(target.pixels[ao], target.pixels[ao + 1], target.pixels[ao + 2]) -
-             brightness(target.pixels[bo], target.pixels[bo + 1], target.pixels[bo + 2]);
-    });
-
-    const remCount = Math.min(remainingSource.length, unmatchedTargets.length);
-    for (let k = 0; k < remCount; k++) {
-      sourceIndices[unmatchedTargets[k]] = remainingSource[k];
-    }
-  }
-
-  const duration = performance.now() - t0;
-  const quality = estimateQuality(source, target, sourceIndices);
-
-  return { sourceIndices, quality, duration, algorithm: 'spatial' };
+  return matchBlockBased(source, target, 8, 'spatial', enableSegmentation);
 }
 
 /**
- * Regional Matching: Quadrant-based assignment.
+ * 6. Regional Matching:
+ * 16-quadrant (4x4) hierarchical regional decomposition for macro color containment.
  */
 export function matchRegional(source: ImageInfo, target: ImageInfo, enableSegmentation = false): MatchResult {
-  return match3DColorGrid(source, target, labCoords, 'regional', enableSegmentation);
+  return matchBlockBased(source, target, 4, 'regional', enableSegmentation);
 }
 
 // ------------------------------------------------------------

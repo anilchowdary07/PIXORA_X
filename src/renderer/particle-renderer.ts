@@ -334,11 +334,11 @@ export class ParticleRenderer {
   constructor(canvas: HTMLCanvasElement, config?: Partial<AnimationConfig>) {
     this.canvas = canvas;
     this.config = { ...DEFAULT_ANIMATION_CONFIG, ...config };
-    this.initGL();
   }
 
   /**
    * Attempt asynchronous upgrade to WebGPU if hardware supports it.
+   * If WebGPU is unsupported or fails, falls back cleanly to WebGL 2 -> WebGL 1 -> Canvas 2D.
    */
   async initWebGPUIfSupported(): Promise<RendererBackend> {
     if (typeof navigator !== 'undefined' && 'gpu' in navigator && (navigator as any).gpu) {
@@ -432,6 +432,9 @@ export class ParticleRenderer {
         console.warn('WebGPU init failed, using WebGL fallback:', err);
       }
     }
+    if (!this.gl && !this.ctx2d) {
+      this.initGL();
+    }
     return this.backend;
   }
 
@@ -496,6 +499,9 @@ export class ParticleRenderer {
     _width: number,
     _height: number
   ): void {
+    if (this.backend !== 'WebGPU' && !this.gl && !this.ctx2d) {
+      this.initGL();
+    }
     this.particleCount = sourcePositions.length / 2;
 
     const delays = new Float32Array(this.particleCount);

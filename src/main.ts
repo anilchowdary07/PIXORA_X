@@ -27,7 +27,7 @@ import type {
   AnimationConfig,
   ReconstructionMetrics,
 } from './engine/types.ts';
-import { DEFAULT_ANIMATION_CONFIG, DEFAULT_PROCESSING_CONFIG, PRESET_CONFIG } from './engine/types.ts';
+import { DEFAULT_ANIMATION_CONFIG, DEFAULT_PROCESSING_CONFIG, PRESET_CONFIG, ALGORITHM_LABELS } from './engine/types.ts';
 
 // ---- Application State ----
 
@@ -101,6 +101,10 @@ function clearViews() {
   if (animFPSInterval) {
     clearInterval(animFPSInterval);
     animFPSInterval = null;
+  }
+  if (renderer) {
+    renderer.dispose();
+    renderer = null;
   }
   const existing = app.querySelectorAll('.view');
   existing.forEach((v) => v.classList.remove('active'));
@@ -264,6 +268,10 @@ function showWorkspace(isReturning = false) {
       },
       onAlgorithmChange: (a) => {
         state.algorithm = a;
+        showToast(`Algorithm: ${ALGORITHM_LABELS[a]}`);
+        if (state.result !== null) {
+          startReconstruction();
+        }
       },
       onPresetChange: (p) => {
         state.preset = p;
@@ -275,10 +283,17 @@ function showWorkspace(isReturning = false) {
           state.processedSource = m.source;
           state.processedTarget = m.target;
         }
+        showToast(`Quality: ${PRESET_CONFIG[p].label}`);
+        if (state.result !== null) {
+          startReconstruction();
+        }
       },
       onSegmentationToggle: (enabled) => {
         state.enableSegmentation = enabled;
         showToast(`AI Saliency ${enabled ? 'Enabled' : 'Disabled'}`);
+        if (state.result !== null) {
+          startReconstruction();
+        }
       },
       onAnimStyleChange: (s) => {
         state.animConfig.style = s;
@@ -342,6 +357,23 @@ function showWorkspace(isReturning = false) {
         const backend = renderer.getBackend();
         const badgeColor = backend === 'WebGPU' ? '#10b981' : '#818cf8';
         workspaceElements.statusBackend.innerHTML = `<span style="color:${badgeColor}; font-weight:600;">[${backend}]</span>`;
+
+        if (hasReconstructed && state.result && state.processedSource && state.processedTarget) {
+          const maxParticles = Math.min(state.animConfig.particleCount, state.result.mapping.length);
+          const particleData = prepareParticleData(
+            state.processedSource,
+            state.processedTarget,
+            state.result.mapping,
+            maxParticles
+          );
+          renderer.setParticles(
+            particleData.sourcePositions,
+            particleData.targetPositions,
+            particleData.colors,
+            state.processedTarget.width,
+            state.processedTarget.height
+          );
+        }
       }
     }
   });
@@ -570,6 +602,12 @@ function showResults(result: ReconstructionResult) {
         showWorkspace(true);
       },
       onNewReconstruction: showLanding,
+      onAlgorithmChange: (a) => {
+        state.algorithm = a;
+        showToast(`Switching to ${ALGORITHM_LABELS[a]}...`);
+        showWorkspace(true);
+        startReconstruction();
+      },
     }
   );
 

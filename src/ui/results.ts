@@ -2,8 +2,8 @@
 // PIXORA X — Results View with Multi-Format Export Center
 // ============================================================
 
-import { createButton } from './controls.ts';
-import type { ReconstructionMetrics } from '../engine/types.ts';
+import { createButton, createSelect } from './controls.ts';
+import { ALGORITHM_LABELS, type AlgorithmType, type ReconstructionMetrics } from '../engine/types.ts';
 
 export interface ResultsCallbacks {
   onExport: (format: string, quality: number) => void;
@@ -11,6 +11,7 @@ export interface ResultsCallbacks {
   onCopyToClipboard: () => void;
   onBackToWorkspace: () => void;
   onNewReconstruction: () => void;
+  onAlgorithmChange?: (a: AlgorithmType) => void;
 }
 
 export function createResults(
@@ -35,6 +36,18 @@ export function createResults(
   const navGroup = document.createElement('div');
   navGroup.className = 'results-nav-group';
 
+  const algoSelect = createSelect(
+    'Algorithm',
+    Object.entries(ALGORITHM_LABELS).map(([value, label]) => ({ value, label })),
+    metrics.algorithm,
+    (v) => {
+      if (callbacks.onAlgorithmChange) {
+        callbacks.onAlgorithmChange(v as AlgorithmType);
+      }
+    }
+  );
+  algoSelect.classList.add('results-algo-select');
+
   const backBtn = createButton('← Back to Workspace', 'primary', callbacks.onBackToWorkspace);
   backBtn.id = 'res-back-btn';
   backBtn.title = 'Return to workspace with current images preserved';
@@ -43,7 +56,7 @@ export function createResults(
   newBtn.id = 'res-new-btn';
   newBtn.title = 'Start fresh with new source and target images';
 
-  navGroup.append(backBtn, newBtn);
+  navGroup.append(algoSelect, backBtn, newBtn);
   header.append(title, navGroup);
 
   // 3-Stage Visual Pipeline Summary Strip

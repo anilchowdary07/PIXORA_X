@@ -152,4 +152,33 @@ describe('Reconstruction Algorithms', () => {
     const result = matchBrightness(img, img);
     expect(result.quality).toBeGreaterThan(0.9);
   });
+
+  it('all 6 algorithms produce distinct mappings on diverse images', () => {
+    const src = createTestImage(32, 32, 'gradient');
+    const tgt = createTestImage(32, 32, 'random');
+
+    const results = [
+      matchLab(src, tgt),
+      matchHSV(src, tgt),
+      matchBrightness(src, tgt),
+      matchMultidimensional(src, tgt),
+      matchSpatial(src, tgt),
+      matchRegional(src, tgt),
+    ];
+
+    // For every pair of algorithms, ensure their mappings differ substantially
+    for (let i = 0; i < results.length; i++) {
+      for (let j = i + 1; j < results.length; j++) {
+        let diffs = 0;
+        const m1 = results[i].sourceIndices;
+        const m2 = results[j].sourceIndices;
+        for (let k = 0; k < m1.length; k++) {
+          if (m1[k] !== m2[k]) diffs++;
+        }
+        const diffRatio = diffs / m1.length;
+        // Verify distinct behavior between algorithms
+        expect(diffRatio).toBeGreaterThan(0.2);
+      }
+    }
+  });
 });

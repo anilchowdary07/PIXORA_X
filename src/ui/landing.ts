@@ -93,16 +93,20 @@ export function createLanding(
     </p>
   `;
 
+  const basePath = import.meta.env.BASE_URL || './';
+  const showcaseSrcUrl = `${basePath}showcase-source.jpg`.replace('//', '/');
+  const showcaseTgtUrl = `${basePath}showcase-target.jpg`.replace('//', '/');
+
   const mbPreviews = document.createElement('div');
   mbPreviews.className = 'featured-masterpiece-previews';
   mbPreviews.innerHTML = `
     <div class="featured-preview-item">
-      <img src="showcase-source.jpg" alt="Source: Cosmic Fluid" />
+      <img src="${showcaseSrcUrl}" alt="Source: Cosmic Fluid" />
       <span>Source</span>
     </div>
     <span class="featured-preview-arrow">➔</span>
     <div class="featured-preview-item">
-      <img src="showcase-target.jpg" alt="Target: Astronaut" />
+      <img src="${showcaseTgtUrl}" alt="Target: Astronaut" />
       <span>Target</span>
     </div>
   `;
