@@ -14,6 +14,7 @@ export interface ResultsCallbacks {
 }
 
 export function createResults(
+  sourceCanvas: HTMLCanvasElement,
   targetCanvas: HTMLCanvasElement,
   reconstructedCanvas: HTMLCanvasElement,
   metrics: ReconstructionMetrics,
@@ -44,6 +45,55 @@ export function createResults(
 
   navGroup.append(backBtn, newBtn);
   header.append(title, navGroup);
+
+  // 3-Stage Visual Pipeline Summary Strip
+  const strip = document.createElement('div');
+  strip.className = 'results-preview-strip';
+
+  // 1. Source Card
+  const srcCard = document.createElement('div');
+  srcCard.className = 'results-strip-card';
+  const srcImg = document.createElement('img');
+  srcImg.src = sourceCanvas.toDataURL();
+  srcImg.alt = 'Source image';
+  const srcLbl = document.createElement('span');
+  srcLbl.className = 'strip-label';
+  srcLbl.textContent = '1. Source (Pixels)';
+  srcCard.append(srcImg, srcLbl);
+
+  // Arrow 1
+  const arrow1 = document.createElement('div');
+  arrow1.className = 'strip-arrow';
+  arrow1.textContent = '➔';
+
+  // 2. Reconstructed Card (Hero)
+  const reconCard = document.createElement('div');
+  reconCard.className = 'results-strip-card highlight';
+  const reconImgThumb = document.createElement('img');
+  reconImgThumb.src = reconstructedCanvas.toDataURL();
+  reconImgThumb.alt = 'Reconstructed image';
+  const reconLbl = document.createElement('span');
+  reconLbl.className = 'strip-label';
+  reconLbl.textContent = '2. Reconstructed (1:1)';
+  reconCard.append(reconImgThumb, reconLbl);
+
+  // Arrow 2
+  const arrow2 = document.createElement('div');
+  arrow2.className = 'strip-arrow';
+  arrow2.textContent = 'vs';
+
+  // 3. Target Card
+  const tgtCard = document.createElement('div');
+  tgtCard.className = 'results-strip-card';
+  const tgtImgThumb = document.createElement('img');
+  tgtImgThumb.src = targetCanvas.toDataURL();
+  tgtImgThumb.alt = 'Target image';
+  const tgtLbl = document.createElement('span');
+  tgtLbl.className = 'strip-label';
+  tgtLbl.textContent = '3. Target (Goal)';
+  tgtCard.append(tgtImgThumb, tgtLbl);
+
+  strip.append(srcCard, arrow1, reconCard, arrow2, tgtCard);
 
   // Interactive Comparison Viewer (Split Slider)
   const comparisonWrap = document.createElement('div');
@@ -270,7 +320,7 @@ export function createResults(
   footer.className = 'app-footer';
   footer.innerHTML = 'Made with <span class="heart-icon">♥</span> by <span class="author-name">Anil Chowdary</span>';
 
-  results.append(header, comparisonWrap, metricsRow, exportCenter, footer);
+  results.append(header, strip, comparisonWrap, metricsRow, exportCenter, footer);
 
   return results;
 }

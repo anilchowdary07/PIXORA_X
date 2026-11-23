@@ -54,7 +54,7 @@ const state: AppState = {
   processedTarget: null,
   algorithm: DEFAULT_PROCESSING_CONFIG.algorithm,
   preset: DEFAULT_PROCESSING_CONFIG.preset,
-  enableSegmentation: true,
+  enableSegmentation: false,
   animConfig: { ...DEFAULT_ANIMATION_CONFIG },
   result: null,
   recordedVideoBlob: null,
@@ -489,10 +489,11 @@ async function downloadOutput(format = 'image/png') {
 // ---- Results ----
 
 function showResults(result: ReconstructionResult) {
-  if (!state.processedTarget) return;
+  if (!state.processedSource || !state.processedTarget) return;
   clearViews();
   state.view = 'results';
 
+  const sourceCanvas = imageInfoToCanvas(state.processedSource);
   const targetCanvas = imageInfoToCanvas(state.processedTarget);
 
   const reconCanvas = document.createElement('canvas');
@@ -513,6 +514,7 @@ function showResults(result: ReconstructionResult) {
   };
 
   const resultsView = createResults(
+    sourceCanvas,
     targetCanvas,
     reconCanvas,
     metrics,
@@ -529,9 +531,10 @@ function showResults(result: ReconstructionResult) {
         }
       },
       onExportComparison: async () => {
-        if (!state.processedTarget) return;
+        if (!state.processedSource || !state.processedTarget) return;
         try {
           const compCanvas = createComparisonCanvas(
+            state.processedSource,
             state.processedTarget,
             result.reconstructedPixels,
             `${(result.quality * 100).toFixed(1)}%`,

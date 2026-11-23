@@ -241,9 +241,11 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 /**
- * Generate a branded side-by-side comparison canvas.
+ * Generate a branded 3-panel side-by-side comparison canvas:
+ * [Source Image (Pixels)] -> [Reconstructed Image (1:1)] -> [Target Image (Structure)]
  */
 export function createComparisonCanvas(
+  source: ImageInfo,
   target: ImageInfo,
   reconstructedPixels: Uint8ClampedArray,
   qualityPct: string,
@@ -252,9 +254,9 @@ export function createComparisonCanvas(
   const w = target.width;
   const h = target.height;
   const gap = 20;
-  const headerH = 64;
-  const footerH = 44;
-  const totalW = w * 2 + gap + 32;
+  const headerH = 70;
+  const footerH = 48;
+  const totalW = w * 3 + gap * 2 + 32;
   const totalH = h + headerH + footerH;
 
   const canvas = document.createElement('canvas');
@@ -268,18 +270,24 @@ export function createComparisonCanvas(
 
   // Top header branding
   ctx.fillStyle = '#e8e8f0';
-  ctx.font = '700 18px Inter, sans-serif';
-  ctx.fillText('PIXORA X', 16, 38);
+  ctx.font = '700 20px Inter, sans-serif';
+  ctx.fillText('PIXORA X', 16, 40);
+
+  ctx.fillStyle = '#818cf8';
+  ctx.font = '600 13px Inter, sans-serif';
+  ctx.fillText('100% Strict Pixel Provenance', 125, 40);
 
   ctx.fillStyle = '#8888a0';
-  ctx.font = '400 12px Inter, sans-serif';
-  ctx.fillText('Strict Pixel Reconstruction Experience (1:1 Provenance)', 115, 38);
+  ctx.font = '400 13px Inter, sans-serif';
+  ctx.fillText('• Full 3-Panel Verification Card', 335, 40);
 
-  // Draw Original Target
-  const origCanvas = imageInfoToCanvas(target);
-  ctx.drawImage(origCanvas, 16, headerH, w, h);
+  // 1. Draw Source Image (Panel 1)
+  const x1 = 16;
+  const srcCanvas = imageInfoToCanvas(source);
+  ctx.drawImage(srcCanvas, x1, headerH, w, h);
 
-  // Draw Reconstructed
+  // 2. Draw Reconstructed Image (Panel 2)
+  const x2 = 16 + w + gap;
   const reconCanvas = document.createElement('canvas');
   reconCanvas.width = w;
   reconCanvas.height = h;
@@ -287,27 +295,46 @@ export function createComparisonCanvas(
   const reconImgData = reconCtx.createImageData(w, h);
   reconImgData.data.set(reconstructedPixels);
   reconCtx.putImageData(reconImgData, 0, 0);
-  ctx.drawImage(reconCanvas, 16 + w + gap, headerH, w, h);
+  ctx.drawImage(reconCanvas, x2, headerH, w, h);
+
+  // 3. Draw Original Target Image (Panel 3)
+  const x3 = 16 + (w + gap) * 2;
+  const tgtCanvas = imageInfoToCanvas(target);
+  ctx.drawImage(tgtCanvas, x3, headerH, w, h);
 
   // Card subheadings
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  ctx.fillRect(16, headerH, w, 28);
-  ctx.fillRect(16 + w + gap, headerH, w, 28);
+  const bannerH = 30;
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.85)';
+  ctx.fillRect(x1, headerH, w, bannerH);
+  ctx.fillRect(x2, headerH, w, bannerH);
+  ctx.fillRect(x3, headerH, w, bannerH);
 
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '600 11px Inter, sans-serif';
-  ctx.fillText('ORIGINAL TARGET', 24, headerH + 18);
-  ctx.fillText('RECONSTRUCTED (SOURCE PIXELS)', 24 + w + gap, headerH + 18);
+  ctx.font = '700 11px Inter, sans-serif';
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillText('① SOURCE IMAGE (PIXEL PALETTE)', x1 + 12, headerH + 20);
+
+  ctx.fillStyle = '#a5b4fc';
+  ctx.fillText('② RECONSTRUCTED (1:1 PROVENANCE)', x2 + 12, headerH + 20);
+
+  ctx.fillStyle = '#10b981';
+  ctx.fillText('③ ORIGINAL TARGET (GOAL STRUCTURE)', x3 + 12, headerH + 20);
+
+  // Accent borders
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x1, headerH, w, h);
+  ctx.strokeRect(x2, headerH, w, h);
+  ctx.strokeRect(x3, headerH, w, h);
 
   // Footer metrics
   ctx.fillStyle = '#818cf8';
   ctx.font = '600 12px Inter, sans-serif';
-  ctx.fillText(`Algorithm: ${algorithm}  |  Quality: ${qualityPct}`, 16, totalH - 16);
+  ctx.fillText(`Algorithm: ${algorithm.toUpperCase()}  |  Quality Score: ${qualityPct}  |  Pixel Provenance: 100% (Bijective)`, 16, totalH - 18);
 
-  ctx.fillStyle = '#555570';
-  ctx.font = '400 11px monospace';
+  ctx.fillStyle = '#8888a0';
+  ctx.font = '500 11px Inter, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText('anilchowdary07.github.io/PIXORA_X', totalW - 16, totalH - 16);
+  ctx.fillText('Made with ♥ by Anil Chowdary  |  anilchowdary07.github.io/PIXORA_X', totalW - 16, totalH - 18);
 
   return canvas;
 }
