@@ -2,7 +2,9 @@
 // PIXORA X — Image Loading & Processing Utilities
 // ============================================================
 
-import type { ImageInfo } from './types.ts';
+import type { ImageInfo, AlgorithmType } from './types.ts';
+import { ALL_ALGORITHM_TYPES, ALGORITHM_LABELS } from './types.ts';
+import type { ReconstructionResult } from '../workers/worker-manager.ts';
 
 /**
  * Load an image File, Blob, or URL into an ImageInfo struct.
@@ -335,6 +337,145 @@ export function createComparisonCanvas(
   ctx.font = '500 11px Inter, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText('Made with ♥ by Anil Chowdary  |  anilchowdary07.github.io/PIXORA_X', totalW - 16, totalH - 18);
+
+  return canvas;
+}
+
+/**
+ * Generate a comprehensive 6-method comparison poster canvas:
+ * Top: Reference Source & Target
+ * Bottom: 3x2 Grid displaying all 6 reconstruction algorithm outputs side-by-side
+ */
+export function createMegaComparisonCanvas(
+  source: ImageInfo,
+  target: ImageInfo,
+  results: Record<AlgorithmType, ReconstructionResult>
+): HTMLCanvasElement {
+  const cellW = Math.max(260, Math.min(380, target.width));
+  const cellH = Math.round(cellW * (target.height / target.width));
+  const gap = 16;
+  const pad = 24;
+  const cols = 3;
+  const rows = 2;
+
+  const gridW = cols * cellW + (cols - 1) * gap;
+  const totalW = gridW + pad * 2;
+
+  // Header height: 70px
+  const headerH = 70;
+  // Reference row height: refCellH + 50px
+  const refCellW = Math.round((gridW - gap) / 2);
+  const refCellH = Math.round(refCellW * (target.height / target.width));
+  const refSectionH = refCellH + 50;
+
+  // 6-method grid height
+  const gridSectionH = rows * (cellH + 30) + (rows - 1) * gap;
+
+  // Footer height
+  const footerH = 50;
+
+  const totalH = headerH + refSectionH + gridSectionH + footerH + pad;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = totalW;
+  canvas.height = totalH;
+  const ctx = canvas.getContext('2d')!;
+
+  // Background
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  // Header Title
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 22px Inter, sans-serif';
+  ctx.fillText('PIXORA X — ALL METHODS COMPARISON MATRIX', pad, 38);
+
+  ctx.fillStyle = '#818cf8';
+  ctx.font = '600 13px Inter, sans-serif';
+  ctx.fillText(`6 Reconstructions from Same Source Pixels • 100% Strict Provenance • ${target.width}×${target.height} px`, pad, 58);
+
+  // Draw Reference Panels (Source & Target)
+  let curY = headerH;
+  const srcCanvas = imageInfoToCanvas(source);
+  const tgtCanvas = imageInfoToCanvas(target);
+
+  // Ref 1: Source
+  ctx.drawImage(srcCanvas, pad, curY + 26, refCellW, refCellH);
+  ctx.fillStyle = 'rgba(15, 15, 25, 0.88)';
+  ctx.fillRect(pad, curY, refCellW, 26);
+  ctx.fillStyle = '#f59e0b';
+  ctx.font = '700 11px Inter, sans-serif';
+  ctx.fillText('① SOURCE IMAGE (EXACT PIXEL PALETTE)', pad + 10, curY + 18);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.strokeRect(pad, curY, refCellW, refCellH + 26);
+
+  // Ref 2: Target
+  const tgtX = pad + refCellW + gap;
+  ctx.drawImage(tgtCanvas, tgtX, curY + 26, refCellW, refCellH);
+  ctx.fillStyle = 'rgba(15, 15, 25, 0.88)';
+  ctx.fillRect(tgtX, curY, refCellW, 26);
+  ctx.fillStyle = '#10b981';
+  ctx.font = '700 11px Inter, sans-serif';
+  ctx.fillText('② ORIGINAL TARGET (GOAL STRUCTURE & GEOMETRY)', tgtX + 10, curY + 18);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.strokeRect(tgtX, curY, refCellW, refCellH + 26);
+
+  // Draw 6 Methods Grid
+  curY += refSectionH + 10;
+  const algoList = ALL_ALGORITHM_TYPES;
+
+  for (let idx = 0; idx < algoList.length; idx++) {
+    const algo = algoList[idx];
+    const res = results[algo];
+    if (!res) continue;
+
+    const c = idx % cols;
+    const r = Math.floor(idx / cols);
+    const x = pad + c * (cellW + gap);
+    const y = curY + r * (cellH + 30 + gap);
+
+    // Render reconstructed image onto an offscreen canvas
+    const rCanvas = document.createElement('canvas');
+    rCanvas.width = target.width;
+    rCanvas.height = target.height;
+    const rCtx = rCanvas.getContext('2d')!;
+    const imgData = rCtx.createImageData(target.width, target.height);
+    imgData.data.set(res.reconstructedPixels);
+    rCtx.putImageData(imgData, 0, 0);
+
+    // Draw Image
+    ctx.drawImage(rCanvas, x, y + 28, cellW, cellH);
+
+    // Card banner
+    ctx.fillStyle = 'rgba(15, 15, 25, 0.9)';
+    ctx.fillRect(x, y, cellW, 28);
+
+    // Algorithm title & Quality badge
+    ctx.fillStyle = '#a5b4fc';
+    ctx.font = '700 11px Inter, sans-serif';
+    ctx.fillText(`${idx + 1}. ${ALGORITHM_LABELS[algo].toUpperCase()}`, x + 10, y + 19);
+
+    ctx.fillStyle = '#10b981';
+    ctx.font = '600 11px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${(res.quality * 100).toFixed(1)}% | ${res.duration.toFixed(0)}ms`, x + cellW - 10, y + 19);
+    ctx.textAlign = 'left';
+
+    // Border
+    ctx.strokeStyle = 'rgba(99, 102, 241, 0.25)';
+    ctx.strokeRect(x, y, cellW, cellH + 28);
+  }
+
+  // Footer
+  ctx.fillStyle = '#818cf8';
+  ctx.font = '600 12px Inter, sans-serif';
+  ctx.fillText('100% Client-Side GPU Processing • Zero AI Hallucinations • Bijective Provenance', pad, totalH - 18);
+
+  ctx.fillStyle = '#8888a0';
+  ctx.font = '500 11px Inter, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('Made with ♥ by Anil Chowdary  |  anilchowdary07.github.io/PIXORA_X', totalW - pad, totalH - 18);
+  ctx.textAlign = 'left';
 
   return canvas;
 }

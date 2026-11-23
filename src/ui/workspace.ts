@@ -8,6 +8,7 @@ import { ALGORITHM_LABELS, PRESET_CONFIG, ANIMATION_LABELS } from '../engine/typ
 
 export interface WorkspaceCallbacks {
   onReconstruct: () => void;
+  onCompareAllMethods?: () => void;
   onBack: () => void;
   onDownloadOutput: (format: string) => void;
   onAlgorithmChange: (a: AlgorithmType) => void;
@@ -127,6 +128,16 @@ export function createWorkspace(
     reconstructBtn.style.transition = 'all 300ms cubic-bezier(0.16, 1, 0.3, 1)';
   }
 
+  // Toolbar Compare All 6 Methods button
+  const compareAllBtn = createButton('⚡ Compare All Methods', 'secondary', () => {
+    if (callbacks.onCompareAllMethods) {
+      callbacks.onCompareAllMethods();
+    }
+  });
+  compareAllBtn.id = 'toolbar-compare-all-btn';
+  compareAllBtn.classList.add('btn-sm');
+  compareAllBtn.title = 'Run all 6 reconstruction methods at once to view and compare their outputs';
+
   // Prominent Download Output Button
   const downloadBtn = createButton('💾 Download Output', 'secondary', () => {
     callbacks.onDownloadOutput('image/png');
@@ -134,7 +145,7 @@ export function createWorkspace(
   downloadBtn.classList.add('btn-sm');
   downloadBtn.title = 'Download the reconstructed output image (PNG)';
 
-  toolbarRight.append(algoSelect, presetSelect, segmentationBtn, reconstructBtn, downloadBtn);
+  toolbarRight.append(algoSelect, presetSelect, segmentationBtn, reconstructBtn, compareAllBtn, downloadBtn);
   toolbar.append(toolbarLeft, toolbarRight);
 
   // ---- Content ----
@@ -175,6 +186,9 @@ export function createWorkspace(
     centerCta.style.display = 'none';
   }
 
+  const centerBtnGroup = document.createElement('div');
+  centerBtnGroup.className = 'center-cta-btn-group';
+
   const centerReconstructBtn = document.createElement('button');
   centerReconstructBtn.className = 'btn btn-primary btn-center-reconstruct';
   centerReconstructBtn.innerHTML = `
@@ -184,11 +198,28 @@ export function createWorkspace(
   `;
   centerReconstructBtn.title = 'Start image reconstruction';
 
+  const centerCompareBtn = document.createElement('button');
+  centerCompareBtn.className = 'btn btn-secondary btn-center-compare';
+  centerCompareBtn.innerHTML = `
+    <span class="cta-icon">⚡⚡</span>
+    <span class="cta-text">Compare All 6 Methods</span>
+  `;
+  centerCompareBtn.title = 'Run all 6 methods simultaneously and compare outputs side-by-side';
+  centerCompareBtn.addEventListener('click', () => {
+    dockCenterButton(() => {
+      if (callbacks.onCompareAllMethods) {
+        callbacks.onCompareAllMethods();
+      }
+    });
+  });
+
+  centerBtnGroup.append(centerReconstructBtn, centerCompareBtn);
+
   const centerSubtitle = document.createElement('div');
   centerSubtitle.className = 'cta-subtitle';
-  centerSubtitle.textContent = 'Click to rearrange source pixels into target structure';
+  centerSubtitle.textContent = 'Rearrange source pixels into target structure with 100% strict provenance';
 
-  centerCta.append(centerReconstructBtn, centerSubtitle);
+  centerCta.append(centerBtnGroup, centerSubtitle);
   canvasContainer.appendChild(centerCta);
 
   // Docking animation: Center button flies to its place in the top toolbar

@@ -16,6 +16,7 @@ import {
   imageDataToBlob,
   matchDimensions,
   createComparisonCanvas,
+  createMegaComparisonCanvas,
   downloadBlob,
 } from './engine/image-utils.ts';
 import type { DemoShowcase } from './engine/demo-images.ts';
@@ -27,7 +28,13 @@ import type {
   AnimationConfig,
   ReconstructionMetrics,
 } from './engine/types.ts';
-import { DEFAULT_ANIMATION_CONFIG, DEFAULT_PROCESSING_CONFIG, PRESET_CONFIG, ALGORITHM_LABELS } from './engine/types.ts';
+import {
+  DEFAULT_ANIMATION_CONFIG,
+  DEFAULT_PROCESSING_CONFIG,
+  PRESET_CONFIG,
+  ALGORITHM_LABELS,
+  ALL_ALGORITHM_TYPES,
+} from './engine/types.ts';
 
 // ---- Application State ----
 
@@ -42,6 +49,7 @@ interface AppState {
   enableSegmentation: boolean;
   animConfig: AnimationConfig;
   result: ReconstructionResult | null;
+  multiResults: Record<AlgorithmType, ReconstructionResult> | null;
   recordedVideoBlob: Blob | null;
   isProcessing: boolean;
 }
@@ -57,6 +65,7 @@ const state: AppState = {
   enableSegmentation: false,
   animConfig: { ...DEFAULT_ANIMATION_CONFIG },
   result: null,
+  multiResults: null,
   recordedVideoBlob: null,
   isProcessing: false,
 };
@@ -127,6 +136,7 @@ function showLanding() {
   state.sourceImage = null;
   state.targetImage = null;
   state.result = null;
+  state.multiResults = null;
   state.recordedVideoBlob = null;
 
   const landing = createLanding(
@@ -262,6 +272,7 @@ function showWorkspace(isReturning = false) {
     reconCanvas,
     {
       onReconstruct: startReconstruction,
+      onCompareAllMethods: startReconstructionAll,
       onBack: showLanding,
       onDownloadOutput: (format) => {
         downloadOutput(format);
@@ -427,6 +438,55 @@ async function startReconstruction() {
       workspaceElements.processingText.textContent = `Error: ${err}`;
     }
     console.error('Reconstruction error:', err);
+  }
+}
+
+async function startReconstructionAll() {
+  if (state.isProcessing || !state.processedSource || !state.processedTarget) return;
+  state.isProcessing = true;
+
+  if (!workspaceElements) return;
+
+  workspaceElements.setBackdropVisibility(false);
+  workspaceElements.processingOverlay.classList.remove('hidden');
+  workspaceElements.processingText.textContent = 'Calculating all 6 methods...';
+  workspaceElements.processingFill.style.width = '0%';
+
+  const phaseDot = workspaceElements.statusPhase.querySelector('.status-dot');
+  if (phaseDot) phaseDot.classList.add('processing');
+
+  try {
+    const results = await workerManager.reconstructAll(
+      state.processedSource,
+      state.processedTarget,
+      state.enableSegmentation,
+      (progress) => {
+        if (!workspaceElements) return;
+        workspaceElements.processingText.textContent = progress.message;
+        workspaceElements.processingFill.style.width = `${Math.round(progress.progress * 100)}%`;
+        workspaceElements.progressFill.style.width = `${Math.round(progress.progress * 100)}%`;
+      }
+    );
+
+    state.multiResults = results;
+    state.result = results[state.algorithm] || results['lab'];
+    state.isProcessing = false;
+
+    workspaceElements.processingOverlay.classList.add('hidden');
+    if (phaseDot) {
+      phaseDot.classList.remove('processing');
+      phaseDot.classList.add('active');
+    }
+
+    // Launch GPU Animation with the active algorithm
+    await startAnimation(state.result);
+  } catch (err) {
+    state.isProcessing = false;
+    if (workspaceElements) {
+      workspaceElements.processingOverlay.classList.add('hidden');
+      workspaceElements.processingText.textContent = `Error: ${err}`;
+    }
+    console.error('Batch reconstruction error:', err);
   }
 }
 
@@ -608,7 +668,73 @@ function showResults(result: ReconstructionResult) {
         showWorkspace(true);
         startReconstruction();
       },
-    }
+      onCompareAllMethods: () => {
+        showToast('Running all 6 reconstruction methods...');
+        showWorkspace(true);
+        startReconstructionAll();
+      },
+      onSelectActiveResult: (algo) => {
+        if (state.multiResults && state.multiResults[algo]) {
+          state.algorithm = algo;
+          state.result = state.multiResults[algo];
+          showToast(`Switched active view to ${ALGORITHM_LABELS[algo]}`);
+          showResults(state.result);
+        }
+      },
+      onExportMegaComparison: async () => {
+        if (!state.processedSource || !state.processedTarget || !state.multiResults) return;
+        try {
+          const posterCanvas = createMegaComparisonCanvas(
+            state.processedSource,
+            state.processedTarget,
+            state.multiResults
+          );
+          posterCanvas.toBlob((blob) => {
+            if (blob) {
+              downloadBlob(blob, 'pixora-x-all-methods-comparison-matrix.png');
+              showToast('Downloaded 6-Method Mega Comparison Poster! 🖼️');
+            }
+          }, 'image/png');
+        } catch (err) {
+          console.error('Poster export error:', err);
+          showToast('Failed to export comparison poster');
+        }
+      },
+      onBatchDownloadAll: async () => {
+        if (!state.multiResults) return;
+        showToast('Batch downloading all 6 method images...');
+        for (const algo of ALL_ALGORITHM_TYPES) {
+          const r = state.multiResults[algo];
+          if (!r) continue;
+          const c = document.createElement('canvas');
+          c.width = r.width;
+          c.height = r.height;
+          const ctx = c.getContext('2d')!;
+          const d = ctx.createImageData(r.width, r.height);
+          d.data.set(r.reconstructedPixels);
+          ctx.putImageData(d, 0, 0);
+          const blob = await imageDataToBlob(d, 'image/png', 1.0);
+          downloadBlob(blob, `pixora-x-${algo}.png`);
+          await new Promise((res) => setTimeout(res, 250));
+        }
+        showToast('All 6 methods downloaded! 📦');
+      },
+      onExportSingleMethod: async (algo) => {
+        if (!state.multiResults || !state.multiResults[algo]) return;
+        const r = state.multiResults[algo];
+        const c = document.createElement('canvas');
+        c.width = r.width;
+        c.height = r.height;
+        const ctx = c.getContext('2d')!;
+        const d = ctx.createImageData(r.width, r.height);
+        d.data.set(r.reconstructedPixels);
+        ctx.putImageData(d, 0, 0);
+        const blob = await imageDataToBlob(d, 'image/png', 1.0);
+        downloadBlob(blob, `pixora-x-${algo}.png`);
+        showToast(`Downloaded ${ALGORITHM_LABELS[algo]} PNG!`);
+      },
+    },
+    state.multiResults
   );
 
   showView(resultsView);

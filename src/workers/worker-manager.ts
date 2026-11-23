@@ -87,6 +87,57 @@ export class WorkerManager {
     });
   }
 
+  async reconstructAll(
+    source: ImageInfo,
+    target: ImageInfo,
+    enableSegmentation: boolean,
+    onProgress: (progress: ProcessingProgress) => void
+  ): Promise<Record<AlgorithmType, ReconstructionResult>> {
+    this.dispose();
+    this.worker = this.createWorker();
+
+    return new Promise((resolve, reject) => {
+      if (!this.worker) {
+        reject(new Error('Worker not available'));
+        return;
+      }
+
+      this.worker.onmessage = (e) => {
+        const msg = e.data;
+
+        if (msg.type === 'progress' && msg.progress) {
+          onProgress(msg.progress);
+        } else if (msg.type === 'result-all' && msg.results) {
+          resolve(msg.results as Record<AlgorithmType, ReconstructionResult>);
+        } else if (msg.type === 'error') {
+          reject(new Error(msg.error || 'Worker error'));
+        }
+      };
+
+      this.worker.onerror = (err) => {
+        reject(new Error(err.message || 'Worker error'));
+      };
+
+      const sourcePixels = new Uint8ClampedArray(source.pixels);
+      const targetPixels = new Uint8ClampedArray(target.pixels);
+
+      this.worker.postMessage(
+        {
+          type: 'reconstruct-all',
+          sourcePixels,
+          sourceWidth: source.width,
+          sourceHeight: source.height,
+          targetPixels,
+          targetWidth: target.width,
+          targetHeight: target.height,
+          enableSegmentation,
+          maxPixels: source.totalPixels,
+        },
+        [sourcePixels.buffer, targetPixels.buffer] as unknown as Transferable[]
+      );
+    });
+  }
+
   cancel(): void {
     this.dispose();
   }

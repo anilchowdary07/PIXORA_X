@@ -3,15 +3,21 @@
 // ============================================================
 
 import { createButton, createSelect } from './controls.ts';
-import { ALGORITHM_LABELS, type AlgorithmType, type ReconstructionMetrics } from '../engine/types.ts';
+import { ALL_ALGORITHM_TYPES, ALGORITHM_LABELS, type AlgorithmType, type ReconstructionMetrics } from '../engine/types.ts';
+import type { ReconstructionResult } from '../workers/worker-manager.ts';
 
 export interface ResultsCallbacks {
   onExport: (format: string, quality: number) => void;
   onExportComparison: () => void;
+  onExportMegaComparison?: () => void;
+  onBatchDownloadAll?: () => void;
+  onExportSingleMethod?: (algo: AlgorithmType) => void;
   onCopyToClipboard: () => void;
   onBackToWorkspace: () => void;
   onNewReconstruction: () => void;
   onAlgorithmChange?: (a: AlgorithmType) => void;
+  onCompareAllMethods?: () => void;
+  onSelectActiveResult?: (algo: AlgorithmType) => void;
 }
 
 export function createResults(
@@ -20,7 +26,8 @@ export function createResults(
   reconstructedCanvas: HTMLCanvasElement,
   metrics: ReconstructionMetrics,
   recordedVideoBlob: Blob | null,
-  callbacks: ResultsCallbacks
+  callbacks: ResultsCallbacks,
+  multiResults: Record<AlgorithmType, ReconstructionResult> | null = null
 ): HTMLElement {
   const results = document.createElement('div');
   results.className = 'view results';
@@ -36,6 +43,18 @@ export function createResults(
   const navGroup = document.createElement('div');
   navGroup.className = 'results-nav-group';
 
+  // Button to compare all 6 methods at once
+  if (callbacks.onCompareAllMethods) {
+    const compareAllBtn = createButton(
+      multiResults ? '⚡ Re-run All 6 Methods' : '⚡ Compare All 6 Methods at Once',
+      'primary',
+      callbacks.onCompareAllMethods
+    );
+    compareAllBtn.id = 'res-compare-all-btn';
+    compareAllBtn.title = 'Run all 6 algorithms simultaneously to inspect and compare their outputs';
+    navGroup.appendChild(compareAllBtn);
+  }
+
   const algoSelect = createSelect(
     'Algorithm',
     Object.entries(ALGORITHM_LABELS).map(([value, label]) => ({ value, label })),
@@ -48,7 +67,7 @@ export function createResults(
   );
   algoSelect.classList.add('results-algo-select');
 
-  const backBtn = createButton('← Back to Workspace', 'primary', callbacks.onBackToWorkspace);
+  const backBtn = createButton('← Back to Workspace', 'secondary', callbacks.onBackToWorkspace);
   backBtn.id = 'res-back-btn';
   backBtn.title = 'Return to workspace with current images preserved';
 
@@ -87,7 +106,7 @@ export function createResults(
   reconImgThumb.alt = 'Reconstructed image';
   const reconLbl = document.createElement('span');
   reconLbl.className = 'strip-label';
-  reconLbl.textContent = '2. Reconstructed (1:1)';
+  reconLbl.textContent = `2. Reconstructed (${ALGORITHM_LABELS[metrics.algorithm as AlgorithmType] || metrics.algorithm})`;
   reconCard.append(reconImgThumb, reconLbl);
 
   // Arrow 2
@@ -107,6 +126,116 @@ export function createResults(
   tgtCard.append(tgtImgThumb, tgtLbl);
 
   strip.append(srcCard, arrow1, reconCard, arrow2, tgtCard);
+
+  // ---- 6-Method Comparison Matrix (When Available) ----
+  let multiMatrixSection: HTMLElement | null = null;
+  if (multiResults) {
+    multiMatrixSection = document.createElement('div');
+    multiMatrixSection.className = 'results-multi-section';
+
+    const mmHeader = document.createElement('div');
+    mmHeader.className = 'results-multi-header';
+    mmHeader.innerHTML = `
+      <div class="multi-header-left">
+        <span class="multi-header-badge">⚡ 6-Method Side-by-Side Outputs</span>
+        <h3 class="multi-header-title">All Method Outputs (Click Any Method to Load in Split Slider)</h3>
+      </div>
+    `;
+
+    const mmActions = document.createElement('div');
+    mmActions.className = 'multi-header-actions';
+
+    if (callbacks.onExportMegaComparison) {
+      const posterBtn = createButton('🖼️ Download All-Methods Poster', 'primary', callbacks.onExportMegaComparison);
+      posterBtn.classList.add('btn-sm');
+      posterBtn.title = 'Download a comprehensive high-res verification card showing all 6 methods + source + target';
+      mmActions.appendChild(posterBtn);
+    }
+
+    if (callbacks.onBatchDownloadAll) {
+      const batchBtn = createButton('📦 Batch Download All 6', 'secondary', callbacks.onBatchDownloadAll);
+      batchBtn.classList.add('btn-sm');
+      batchBtn.title = 'Download all 6 reconstructed images as individual lossless PNGs';
+      mmActions.appendChild(batchBtn);
+    }
+
+    mmHeader.appendChild(mmActions);
+    multiMatrixSection.appendChild(mmHeader);
+
+    const matrixGrid = document.createElement('div');
+    matrixGrid.className = 'multi-methods-grid';
+
+    for (const algo of ALL_ALGORITHM_TYPES) {
+      const r = multiResults[algo];
+      if (!r) continue;
+
+      const card = document.createElement('div');
+      const isActive = algo === metrics.algorithm;
+      card.className = `multi-method-card${isActive ? ' active' : ''}`;
+
+      // Create thumbnail canvas
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = r.width;
+      thumbCanvas.height = r.height;
+      const tCtx = thumbCanvas.getContext('2d')!;
+      const imgData = tCtx.createImageData(r.width, r.height);
+      imgData.data.set(r.reconstructedPixels);
+      tCtx.putImageData(imgData, 0, 0);
+
+      const topBar = document.createElement('div');
+      topBar.className = 'method-card-top';
+
+      const algoName = document.createElement('span');
+      algoName.className = 'method-card-name';
+      algoName.textContent = ALGORITHM_LABELS[algo];
+
+      const scoreBadge = document.createElement('span');
+      scoreBadge.className = 'method-card-score';
+      scoreBadge.textContent = `${(r.quality * 100).toFixed(1)}%`;
+
+      topBar.append(algoName, scoreBadge);
+
+      const imgWrapper = document.createElement('div');
+      imgWrapper.className = 'method-card-img-wrap';
+      const img = document.createElement('img');
+      img.src = thumbCanvas.toDataURL();
+      img.alt = ALGORITHM_LABELS[algo];
+      imgWrapper.appendChild(img);
+
+      const bottomBar = document.createElement('div');
+      bottomBar.className = 'method-card-bottom';
+
+      const statusBadge = document.createElement('span');
+      statusBadge.className = `method-status-pill${isActive ? ' active-pill' : ''}`;
+      statusBadge.textContent = isActive ? '✓ In Split Slider' : '👁️ Click to View';
+
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'btn-icon-dl';
+      dlBtn.innerHTML = '💾 PNG';
+      dlBtn.title = `Download ${ALGORITHM_LABELS[algo]} output (PNG)`;
+      dlBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (callbacks.onExportSingleMethod) {
+          callbacks.onExportSingleMethod(algo);
+        }
+      });
+
+      bottomBar.append(statusBadge, dlBtn);
+
+      card.append(topBar, imgWrapper, bottomBar);
+
+      // Clicking card selects it as the active result in the split slider
+      card.addEventListener('click', () => {
+        if (callbacks.onSelectActiveResult) {
+          callbacks.onSelectActiveResult(algo);
+        }
+      });
+
+      matrixGrid.appendChild(card);
+    }
+
+    multiMatrixSection.appendChild(matrixGrid);
+  }
 
   // Interactive Comparison Viewer (Split Slider)
   const comparisonWrap = document.createElement('div');
@@ -285,8 +414,26 @@ export function createResults(
   const exportButtons = document.createElement('div');
   exportButtons.className = 'export-buttons-grid';
 
+  // Multi-Method downloads if available
+  if (multiResults) {
+    if (callbacks.onExportMegaComparison) {
+      const posterBtn = createButton('🖼️ Download All-Methods Poster', 'primary', callbacks.onExportMegaComparison);
+      posterBtn.title = 'Download full 6-method side-by-side comparison poster (PNG)';
+      exportButtons.appendChild(posterBtn);
+    }
+    if (callbacks.onBatchDownloadAll) {
+      const batchBtn = createButton('📦 Batch Download All 6 (PNG)', 'secondary', callbacks.onBatchDownloadAll);
+      batchBtn.title = 'Download each of the 6 reconstructed algorithm images as lossless PNG files';
+      exportButtons.appendChild(batchBtn);
+    }
+  } else if (callbacks.onCompareAllMethods) {
+    const compareAllBtn = createButton('⚡ Compare All 6 Methods', 'primary', callbacks.onCompareAllMethods);
+    compareAllBtn.title = 'Run all 6 reconstruction methods at once to compare their outputs';
+    exportButtons.appendChild(compareAllBtn);
+  }
+
   // 1. Download PNG
-  const pngBtn = createButton('💾 Download PNG (Lossless)', 'primary', () => {
+  const pngBtn = createButton(`💾 Download ${ALGORITHM_LABELS[metrics.algorithm as AlgorithmType] || metrics.algorithm} (PNG)`, 'secondary', () => {
     callbacks.onExport('image/png', 1.0);
   });
 
@@ -301,7 +448,7 @@ export function createResults(
   });
 
   // 4. Download Side-by-Side Comparison
-  const compareBtn = createButton('📊 Download Comparison Card', 'secondary', () => {
+  const compareBtn = createButton('📊 Download 3-Panel Card', 'secondary', () => {
     callbacks.onExportComparison();
   });
 
@@ -333,7 +480,11 @@ export function createResults(
   footer.className = 'app-footer';
   footer.innerHTML = 'Made with <span class="heart-icon">♥</span> by <span class="author-name">Anil Chowdary</span>';
 
-  results.append(header, strip, comparisonWrap, metricsRow, exportCenter, footer);
+  if (multiMatrixSection) {
+    results.append(header, strip, comparisonWrap, metricsRow, multiMatrixSection, exportCenter, footer);
+  } else {
+    results.append(header, strip, comparisonWrap, metricsRow, exportCenter, footer);
+  }
 
   return results;
 }

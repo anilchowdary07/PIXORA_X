@@ -63,13 +63,22 @@ export interface ReconstructionMetrics {
 }
 
 export const ALGORITHM_LABELS: Record<AlgorithmType, string> = {
-  brightness: 'Brightness Sort',
-  hsv: 'HSV Color Match',
   lab: 'CIE Lab Perceptual',
+  hsv: 'HSV Harmonic',
+  brightness: 'Luminance Sort',
   multidimensional: 'Multi-Dimensional',
-  spatial: 'Spatial-Aware',
+  spatial: 'Spatial-Aware Flow',
   regional: 'Regional Match',
 };
+
+export const ALL_ALGORITHM_TYPES: AlgorithmType[] = [
+  'lab',
+  'hsv',
+  'brightness',
+  'multidimensional',
+  'spatial',
+  'regional',
+];
 
 export const PRESET_CONFIG: Record<QualityPreset, { maxPixels: number; label: string }> = {
   fast: { maxPixels: 256 * 256, label: 'Fast (256×256)' },

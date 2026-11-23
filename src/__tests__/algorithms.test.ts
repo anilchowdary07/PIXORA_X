@@ -12,6 +12,7 @@ import {
   matchSpatial,
   matchRegional,
 } from '../engine/algorithms.ts';
+import { ALL_ALGORITHM_TYPES } from '../engine/types.ts';
 import type { ImageInfo } from '../engine/types.ts';
 
 // ---- Helpers ----
@@ -180,5 +181,15 @@ describe('Reconstruction Algorithms', () => {
         expect(diffRatio).toBeGreaterThan(0.2);
       }
     }
+  });
+
+  it('ALL_ALGORITHM_TYPES contains all 6 methods', () => {
+    expect(ALL_ALGORITHM_TYPES).toHaveLength(6);
+    expect(ALL_ALGORITHM_TYPES).toContain('lab');
+    expect(ALL_ALGORITHM_TYPES).toContain('hsv');
+    expect(ALL_ALGORITHM_TYPES).toContain('brightness');
+    expect(ALL_ALGORITHM_TYPES).toContain('multidimensional');
+    expect(ALL_ALGORITHM_TYPES).toContain('spatial');
+    expect(ALL_ALGORITHM_TYPES).toContain('regional');
   });
 });
